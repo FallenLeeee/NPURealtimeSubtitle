@@ -17,6 +17,7 @@ public static class AsrJunkFilter
         "music", "♪", "♫", "song", "歌曲", "音乐", "歌声",
         "applause", "掌声", "laughter", "笑声", "silence",
         "instrumental", "noise", "melody",
+        "outro", "intro", // whisper.en tags song sections "*outro*" / "*intro*" (P6-19)
     };
 
     private static readonly string[] Prefixes =
@@ -24,11 +25,12 @@ public static class AsrJunkFilter
         "[music", "[song", "[歌曲", "[音乐", "[applause", "[laughter", "(music", "music]",
         "[instrumental", "[noise", "[melody", "♪", "♫",
         "<|music|>", "<|applause|>", "<|laughter|>", "<|noise|>", "<|silence|>",
+        "*music", "*outro", "*intro", "*applause", "*laughter", "*instrumental", "*noise", // P6-19
     };
 
     /// <summary>Trim characters applied before matching (surviving annotation fragments).</summary>
     private static readonly char[] TrimChars =
-        { '[', ']', '(', ')', ' ', '\t', '♪', '♫', ':', '：', '·', '—', '-', '<', '>', '"', '.', '!', '？', '?' };
+        { '[', ']', '(', ')', ' ', '\t', '♪', '♫', ':', '：', '·', '—', '-', '<', '>', '"', '.', '!', '？', '?', '*' };
 
     /// <summary>True when the text is only an audio-event annotation (or empty).</summary>
     public static bool IsJunk(string? text)
@@ -56,7 +58,9 @@ public static class AsrJunkFilter
             if (lowered == j) return true;
         }
 
-        return false;
+        // "(outro music)" / "(music playing)" → every word is an annotation → junk (P6-19).
+        return lowered.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .All(word => Standalone.Contains(word));
     }
 
     /// <summary>
@@ -116,6 +120,21 @@ public static class AsrJunkFilter
                     string after = text[(gt + 2)..];
                     string joined = (before + after).Trim();
                     return joined;
+                }
+            }
+        }
+
+        // "*outro*" / "*music*" (P6-19, whisper.en song-section tags) → strip the marker,
+        // keeping any lyrics that follow ("*music* I feel love" → "I feel love").
+        if (text.Length >= 3 && text[0] == '*')
+        {
+            int secondStar = text.IndexOf('*', 1);
+            if (secondStar > 1)
+            {
+                string inside = text[1..secondStar].Trim(TrimChars);
+                if (IsAnnotationWord(inside))
+                {
+                    return text[(secondStar + 1)..].TrimStart();
                 }
             }
         }

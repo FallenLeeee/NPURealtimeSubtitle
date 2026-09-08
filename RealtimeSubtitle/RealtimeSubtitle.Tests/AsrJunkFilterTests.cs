@@ -22,6 +22,13 @@ public class AsrJunkFilterTests
     [InlineData("[noise]")]
     [InlineData("")]
     [InlineData("  ")]
+    // P6-19: whisper.en song-section tags arrive as *music* / *outro* / *intro* —
+    // these must be filtered like the bracket form.
+    [InlineData("*music*")]
+    [InlineData("*outro*")]
+    [InlineData("*intro*")]
+    [InlineData("*applause*")]
+    [InlineData("(outro music)")]
     public void JunkIsFiltered(string text) => Assert.True(AsrJunkFilter.IsJunk(text));
 
     [Theory]
@@ -45,6 +52,12 @@ public class AsrJunkFilterTests
     [InlineData("<|applause|>", "")]
     [InlineData("  hello  ", "hello")]
     [InlineData("Where are you going?", "Where are you going?")]
+    // P6-19: star-wrapped whisper.en section tags — stripped when followed by lyrics,
+    // dropped entirely when alone.
+    [InlineData("*music*", "")]
+    [InlineData("*outro*", "")]
+    [InlineData("*music* I feel love", "I feel love")]
+    [InlineData("(outro music)", "")]
     public void StripAnnotationsCleans(string input, string expected)
         => Assert.Equal(expected, AsrJunkFilter.StripAnnotations(input));
 }

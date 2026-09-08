@@ -511,6 +511,24 @@ Remove-Item Env:SSL_CERT_FILE（变量指向不存在的 certifi 文件）
 - 验证：新增 AppConfigLoaderTests 2 例（Asr.Device 默认 auto / 非法值校验）；
   67/67 单测通过；GUI 启动无异常（标题栏日志正常）。
 
+## P6-19（2026-09-09）：`*music*`/`*outro*` 星号包裹事件标注未过滤 → 垃圾译文上屏
+
+- 现象（app 日志实测）：whisper.en 输出 `*music*`、`*outro*`、`(outro music)` 等事件标注，
+  `AsrJunkFilter` 未覆盖星号包裹形式，导致它们被翻译成垃圾字幕上屏：
+  `'*music*' → '音乐*'`、`'*outro*' → '* 出 题*'`、`'(outro music)' → '(外音)'`。
+- 根因：
+  1. `TrimChars` 缺 `'*'`，`*music*` 剥不掉星号，standalone 全等匹配失败；
+  2. `Standalone` 缺 `outro`/`intro`（whisper.en 歌曲段落标注）；
+  3. `IsJunk` 只做整词全等，`(outro music)` 剥括号后多词无法命中。
+- 修复（AsrJunkFilter）：
+  1. `Prefixes` 增 `*music`/`*outro`/`*intro`/`*applause`/`*laughter`/`*instrumental`/`*noise`；
+  2. `TrimChars` 增 `'*'`；3. `Standalone` 增 `outro`、`intro`；
+  4. `StripLeadingAnnotation` 支持 `*word*` 星号包裹（剥注解保留后文歌词，
+     "*music* I feel love" → "I feel love"）；
+  5. `IsJunk` 尾部多词判断：剥后所有词都是事件词即判 junk（"(outro music)" → junk）。
+- 验证：AsrJunkFilterTests 新增 5 例（`*music*`/`*outro*`/`*intro*`/`*applause*`/
+  `(outro music)` + strip 4 例）；76/76 单测通过，构建 0 警告 0 错误。
+
 ## 待办（Phase 5 范围）
 
 - [x] whisper 经典 API 自实现（mel 谱 + BPE decode + 贪心；U4a 解阻塞）→ ASR 三语 U2/U3 验证、NPU/CPU 延迟实测
