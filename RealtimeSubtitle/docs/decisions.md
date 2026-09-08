@@ -529,6 +529,23 @@ Remove-Item Env:SSL_CERT_FILE（变量指向不存在的 certifi 文件）
 - 验证：AsrJunkFilterTests 新增 5 例（`*music*`/`*outro*`/`*intro*`/`*applause*`/
   `(outro music)` + strip 4 例）；76/76 单测通过，构建 0 警告 0 错误。
 
+## P6-20/21/22（2026-09-09）：实机网易云测试——间奏段字幕冻结/垃圾译文修复
+
+- 实机测试（网易云 CloudMusic 播放 + 系统静音，WASAPI loopback 抓信号）：
+  主歌段 partial/final 每 ~1.2s，翻译 CPU 12-93ms/句正常跟随。
+- P6-21：whisper.en 的 BGM 描述性标注 `(upbeat music)` / `(mellow music)` 未过滤 → 翻出
+  `'(upbeat music)' → '(欢乐音乐)'` 垃圾译文。`Standalone`/`Prefixes` 补
+  `upbeat/mellow/soft/loud` 描述词（含 "(upbeat" 前缀）。
+- P6-22：纯音乐间奏段 whisper 一直输出 junk（无歌词），`CleanAsrText` 返回空后事件被
+  静默丢弃 → 覆盖层**冻结在上一句歌词**，观感"字幕没输出了"。
+  新增 `SubtitleManager.Clear()`：Partial 与 Final 处理器在 clean 为空时调用，立即
+  发空快照清空覆盖层；下一句歌词到达后正常恢复。
+- P6-20：`--live` 探针改用与 GUI 相同的文件日志 sink（%LOCALAPPDATA%\RealtimeSubtitle\logs），
+  无头测试后可复查完整 ASR/翻译轨迹。
+- 验证：3 分钟实机探针 8/8 翻译均为真实歌词、**零** `*music*`/`*outro*`/`upbeat` 垃圾上屏，
+  间奏段覆盖层正确清空；新增测试 5 例（`(upbeat music)` 判定 + strip 2 例 + Clear 1 例）；
+  **81/81 单测通过**，构建 0 警告 0 错误。
+
 ## 待办（Phase 5 范围）
 
 - [x] whisper 经典 API 自实现（mel 谱 + BPE decode + 贪心；U4a 解阻塞）→ ASR 三语 U2/U3 验证、NPU/CPU 延迟实测
