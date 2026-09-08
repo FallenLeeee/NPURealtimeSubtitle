@@ -33,3 +33,6 @@ RealtimeSubtitle/tools/model-convert/testrefs/
 # --- 运行/探针输出 ---
 probe2.txt
 *.report.txt
+demo-report.txt
+live-report.txt
+overlay-probe.txt
