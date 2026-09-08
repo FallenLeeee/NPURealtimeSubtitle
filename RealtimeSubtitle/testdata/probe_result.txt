@@ -1,0 +1,11 @@
+PROBE_FAILED=1
+ERROR_TYPE=COMException
+ERROR=
+STACK=System.Runtime.InteropServices.COMException (0x8A1F022F)
+   at WinRT.ExceptionHelpers.<ThrowExceptionForHR>g__Throw|38_0(Int32 hr)
+   at WinRT.ExceptionHelpers.ThrowExceptionForHR(Int32 hr)
+   at ABI.Microsoft.Windows.AI.Speech.ISpeechRecognitionModelStaticsMethods.GetReadyState(IObjectReference _obj)
+   at Microsoft.Windows.AI.Speech.SpeechRecognitionModel.GetReadyState()
+   at RealtimeSubtitle.Windows.SpeechModelManager.EnsureReadyAsync(IProgress`1 progress, CancellationToken cancellationToken)
+   at RealtimeSubtitle.Windows.SpeechProbe.RunBatchAsync(String wavPath, CancellationToken token)
+   at RealtimeSubtitle.App.App.RunAiProbeAsync(String[] cmd, Int32 startIndex)

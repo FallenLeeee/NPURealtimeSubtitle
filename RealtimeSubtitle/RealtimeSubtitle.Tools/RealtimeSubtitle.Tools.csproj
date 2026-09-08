@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>RealtimeSubtitle.Tools</RootNamespace>
+    <Platforms>x64</Platforms>
+    <AssemblyName>WavDumpTool</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RealtimeSubtitle.Core\RealtimeSubtitle.Core.csproj" />
+    <ProjectReference Include="..\RealtimeSubtitle.Windows\RealtimeSubtitle.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- SAPI TTS: used only by the synth mode to generate local test-speech WAVs (no cloud). -->
+    <PackageReference Include="System.Speech" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

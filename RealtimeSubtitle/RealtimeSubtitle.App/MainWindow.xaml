@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="RealtimeSubtitle.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:media="using:Microsoft.UI.Xaml.Media"
+    Title="RealtimeSubtitle · 实时字幕">
+    <Window.SystemBackdrop>
+        <media:MicaBackdrop />
+    </Window.SystemBackdrop>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  HorizontalContentAlignment="Stretch">
+        <Grid Padding="28,22,28,20" RowSpacing="12">
+        <Grid.Resources>
+            <Style x:Key="Card" TargetType="Border">
+                <Setter Property="Background" Value="#26FFFFFF" />
+                <Setter Property="BorderBrush" Value="#14FFFFFF" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="10" />
+                <Setter Property="Padding" Value="18,14" />
+            </Style>
+            <Style x:Key="CardTitle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Margin" Value="0,0,0,10" />
+            </Style>
+            <Style x:Key="FieldLabel" TargetType="TextBlock">
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 标题 -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="实时字幕" FontSize="26" FontWeight="SemiBold" />
+            <TextBlock Text="RealtimeSubtitle · 语音识别 → 本地翻译 → 透明覆盖层"
+                       FontSize="12" Opacity="0.55" Margin="0,2,0,0" />
+        </StackPanel>
+
+        <!-- 状态 -->
+        <Grid Grid.Row="1" ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Ellipse x:Name="StatusDot" Width="10" Height="10" Fill="#9BA1A6" VerticalAlignment="Center" />
+            <TextBlock x:Name="Status" Grid.Column="1" Text="就绪" FontSize="14" FontWeight="SemiBold"
+                       VerticalAlignment="Center" TextWrapping="Wrap" />
+        </Grid>
+
+        <!-- 运行模式与字幕 -->
+        <Border Grid.Row="2" Style="{StaticResource Card}">
+            <StackPanel Spacing="10">
+                <TextBlock Style="{StaticResource CardTitle}" Text="运行模式与字幕" />
+                <Grid ColumnSpacing="14" RowSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="88" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="运行模式" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="ModeCombo" Grid.Column="1" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnModeChanged">
+                        <ComboBoxItem Content="演示字幕（demo.txt 剧本）" Tag="demo" />
+                        <ComboBoxItem Content="真声直播（实时识别 → 翻译）" Tag="live" />
+                    </ComboBox>
+                    <TextBlock Text="字幕显示" Grid.Row="1" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="DisplayCombo" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnDisplayChanged">
+                        <ComboBoxItem Content="原文 + 译文（双语）" Tag="bilingual" />
+                        <ComboBoxItem Content="仅译文" Tag="translation" />
+                        <ComboBoxItem Content="仅原文" Tag="source" />
+                    </ComboBox>
+                </Grid>
+                <TextBlock x:Name="ModeHint" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- 引擎与翻译 -->
+        <Border Grid.Row="3" Style="{StaticResource Card}">
+            <StackPanel Spacing="10">
+                <TextBlock Style="{StaticResource CardTitle}" Text="语音引擎与翻译" />
+                <Grid ColumnSpacing="14" RowSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="88" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="语音识别" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="AsrCombo" Grid.Column="1" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnAsrChanged">
+                        <ComboBoxItem Content="Whisper 本地（扬声器/系统音频回环）" Tag="whisper" />
+                        <ComboBoxItem Content="Windows 语音识别（麦克风）" Tag="legacy" />
+                    </ComboBox>
+                    <TextBlock Text="识别语言" Grid.Row="1" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="LanguageCombo" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnLanguageChanged">
+                        <ComboBoxItem Content="自动（多语言 Whisper 检测）" Tag="auto" />
+                        <ComboBoxItem Content="中文（Qwen3-ASR 专精）" Tag="zh" />
+                        <ComboBoxItem Content="英语（Whisper .en 专精）" Tag="en" />
+                        <ComboBoxItem Content="日语（SenseVoice 专精）" Tag="ja" />
+                    </ComboBox>
+                    <TextBlock Text="识别模型" Grid.Row="2" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="WhisperModelCombo" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnWhisperModelChanged">
+                        <ComboBoxItem Content="Whisper tiny（最快 ~0.08s/段）" Tag="tiny" />
+                        <ComboBoxItem Content="Whisper base（推荐 ~0.13s/段）" Tag="base" />
+                        <ComboBoxItem Content="Whisper small（最准 ~0.35s/段）" Tag="small" />
+                    </ComboBox>
+                    <TextBlock Text="翻译设备" Grid.Row="3" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="TransDeviceCombo" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnTransDeviceChanged">
+                        <ComboBoxItem Content="自动（实测 NPU/CPU 选优）" Tag="auto" />
+                        <ComboBoxItem Content="NPU（静态形状，首次编译较慢）" Tag="NPU" />
+                        <ComboBoxItem Content="CPU" Tag="CPU" />
+                    </ComboBox>
+                    <TextBlock Text="翻译模型" Grid.Row="4" Style="{StaticResource FieldLabel}" />
+                    <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <TextBox x:Name="TransModelBox" Height="32" VerticalContentAlignment="Center"
+                                 PlaceholderText="模型目录（留空 = 自动查找/下载）" Width="340" />
+                        <Button x:Name="SaveModelButton" Content="保存" Click="OnSaveModelClick" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock x:Name="EngineHint" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- 模型状态 -->
+        <Border Grid.Row="4" Style="{StaticResource Card}">
+            <StackPanel Spacing="10">
+                <TextBlock Style="{StaticResource CardTitle}" Text="模型" />
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse x:Name="WhisperDot" Width="8" Height="8" Fill="#9BA1A6" VerticalAlignment="Center" />
+                    <TextBlock x:Name="WhisperStatus" Grid.Column="1" FontSize="12.5" VerticalAlignment="Center"
+                               TextWrapping="Wrap" />
+                </Grid>
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Ellipse x:Name="MarianDot" Width="8" Height="8" Fill="#9BA1A6" VerticalAlignment="Center" />
+                    <TextBlock x:Name="MarianStatus" Grid.Column="1" FontSize="12.5" VerticalAlignment="Center"
+                               TextWrapping="Wrap" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="DownloadButton" Content="下载缺失模型" Click="OnDownloadClick" />
+                    <ProgressBar x:Name="DownloadProgress" Width="240" Height="6" Visibility="Collapsed"
+                                 VerticalAlignment="Center" />
+                    <TextBlock x:Name="DownloadPercent" FontSize="12" Opacity="0.7" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock x:Name="ModelsDetail" FontSize="11" Opacity="0.55" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- 操作 -->
+        <Border Grid.Row="5" Style="{StaticResource Card}">
+            <StackPanel Spacing="8">
+                <Button x:Name="StartButton" Content="开始" Click="OnStartClick" HorizontalAlignment="Stretch"
+                        Height="46" FontSize="15" FontWeight="SemiBold"
+                        Style="{StaticResource AccentButtonStyle}" />
+                <TextBlock x:Name="ActionHint" FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- 日志 -->
+        <Border Grid.Row="6" Style="{StaticResource Card}">
+            <StackPanel Spacing="6">
+                <TextBlock Style="{StaticResource CardTitle}" Text="日志" />
+                <ScrollViewer x:Name="LogScroller" MaxHeight="140" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <TextBlock x:Name="LogBox" FontFamily="Consolas" FontSize="12" TextWrapping="Wrap"
+                               Opacity="0.85" />
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+    </Grid>
+    </ScrollViewer>
+</Window>

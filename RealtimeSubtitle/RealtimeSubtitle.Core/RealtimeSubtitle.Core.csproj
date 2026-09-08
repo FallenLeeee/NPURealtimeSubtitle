@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>RealtimeSubtitle.Core</RootNamespace>
+    <Platforms>AnyCPU</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The mel reference implementation is internal: tests compare the SIMD path against it. -->
+    <InternalsVisibleTo Include="RealtimeSubtitle.Tests" />
+  </ItemGroup>
+
+</Project>

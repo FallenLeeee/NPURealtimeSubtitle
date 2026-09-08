@@ -1,0 +1,16 @@
+<Solution>
+  <Project Path="RealtimeSubtitle.App/RealtimeSubtitle.App.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="RealtimeSubtitle.Core/RealtimeSubtitle.Core.csproj" />
+  <Project Path="RealtimeSubtitle.Overlay.Wpf/RealtimeSubtitle.Overlay.Wpf.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="RealtimeSubtitle.Tests/RealtimeSubtitle.Tests.csproj" />
+  <Project Path="RealtimeSubtitle.Tools/RealtimeSubtitle.Tools.csproj">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="RealtimeSubtitle.Windows/RealtimeSubtitle.Windows.csproj">
+    <Platform Project="x64" />
+  </Project>
+</Solution>

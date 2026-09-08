@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformVersion>10.0.26226.0</TargetPlatformVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>RealtimeSubtitle.Windows</RootNamespace>
+    <Platforms>x64</Platforms>
+    <!-- CS8305: Microsoft.Windows.AI.Speech is intentionally experimental (decisions.md P2-1).
+         CS0067: fallback recognizer events are wired by Phase 5. -->
+    <NoWarn>$(NoWarn);CS8305;CS0067</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Needed to compile against Microsoft.Windows.AI.Speech (verified combo, see docs/decisions.md P2-1). -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.1-experimental" />
+    <!-- OpenVINO: managed (classic Core + GenAI Whisper) + single native bundle
+         (openvino/openvino_genai + NPU/CPU plugins + tokenizers) — see docs/decisions.md P3-1. -->
+    <PackageReference Include="JYPPX.OpenVINO.CSharp.API" Version="3.3.1" />
+    <PackageReference Include="JYPPX.OpenVINO.GenAI.runtime.win" Version="2026.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RealtimeSubtitle.Core\RealtimeSubtitle.Core.csproj" />
+  </ItemGroup>
+
+</Project>
+
