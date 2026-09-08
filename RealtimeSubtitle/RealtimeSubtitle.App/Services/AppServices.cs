@@ -55,6 +55,10 @@ public sealed class AppServices : IDisposable
 
         _queue.Completed += (request, result) =>
         {
+            // P6-16: log every completed translation (latency + device + texts + target line)
+            // so the "翻译跟不上" reports can be traced from the log alone — previously the
+            // pipeline silently dropped/kept results with zero observability.
+            long ms = (long)result.Elapsed.TotalMilliseconds;
             if (result.TargetText.Length > 0)
             {
                 // P6-13: translations land on the exact subtitle line by id — text-matching
@@ -62,6 +66,13 @@ public sealed class AppServices : IDisposable
                 // first (UI showed source only, never the translation).
                 Subtitles.OnTranslated(request.SubtitleLineId, result.TargetText, DateTimeOffset.Now);
                 Interlocked.Increment(ref _completedCount);
+                Log.Info("Translated (line {0}) in {1} ms on {2}: '{3}' → '{4}'",
+                    request.SubtitleLineId, ms, result.Device, request.SourceText, result.TargetText);
+            }
+            else
+            {
+                Log.Warn("Translation yielded empty result (line {0}, {1} ms on {2}) for '{3}'",
+                    request.SubtitleLineId, ms, result.Device, request.SourceText);
             }
         };
     }
