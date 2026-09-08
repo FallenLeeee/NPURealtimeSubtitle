@@ -51,11 +51,20 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
     private readonly object _inFlightSync = new();
     private readonly List<Task> _inFlight = new();
 
-    public OpenVinoQwen3AsrRecognizer(string modelDir, string language = "zh", LogSink? log = null)
+    public OpenVinoQwen3AsrRecognizer(string modelDir, string language = "zh", LogSink? log = null,
+        string device = "auto")
     {
         _log = log ?? LogSink.Default;
         _core = new OpenVinoSharp.Core();
         OpenVinoDevice.ApplyCache(_core, "CPU", "NPU");
+
+        // P6-18: Qwen3-ASR is a dynamic-shape 1.7B LLM pipeline (encoder + thinker + 2 KV
+        // decode steps). The NPU can't compile it (dynamic shapes), so device selection is
+        // honored only as surface state: execution stays on CPU regardless of the GUI pick.
+        if (device is not ("auto" or "CPU"))
+        {
+            _log.Warn("Qwen3-ASR: device='{0}' requested, but the dynamic 1.7B pipeline only compiles on CPU — using CPU.", device);
+        }
 
         _audioEncoder = _core.CompileModel(Path.Combine(modelDir, "audio_encoder_model.xml"), "CPU");
         _thinker = _core.CompileModel(Path.Combine(modelDir, "thinker_embeddings_model.xml"), "CPU");

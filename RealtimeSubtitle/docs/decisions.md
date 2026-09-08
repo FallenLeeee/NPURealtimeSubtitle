@@ -493,6 +493,24 @@ Remove-Item Env:SSL_CERT_FILE（变量指向不存在的 certifi 文件）
   短于 3 字符的 partial 仅作原文预览、不翻译；final 不受限（最终必译）。
 - 验证：`--demo` 探针 30s 后 LINES=「We made it.|我们成功了」，译文正确回填。
 
+## P6-18（2026-09-09）：GUI 将 ASR 与翻译设备分开设置
+
+- 需求：此前"语音引擎与翻译"单卡里只有"翻译设备"下拉，ASR 的设备选择没有入口
+  （whisper/SenseVoice 内部硬编码 auto→试 NPU）。用户要求分开设置。
+- 改动：
+  1. `AsrConfig.Device`（auto | NPU | CPU，默认 auto）+ Validate 校验；
+  2. `OpenVinoSenseVoiceRecognizer` / `OpenVinoQwen3AsrRecognizer` 构造器接受 `device`
+     参数（SenseVoice：auto/NPU→试 NPU FP32 静态、失败回退 CPU；CPU→直走 CPU；Qwen3
+     动态 1.7B 恒为 CPU，device 仅记录日志）；whisper classic 本就有 `device` 参数
+     （auto→NPU 编译，失败回退 CPU）；
+  3. `AppServices.BuildRecognizer` / `SwitchAsrModel` 传入 `config.Asr.Device`；
+  4. GUI：卡片拆为「语音引擎（ASR）」（识别语言/模型/**识别设备**）与「翻译」
+     （翻译设备/翻译模型）两张卡；识别设备变更运行中热切换（复用 SwitchAsrBackend）；
+     legacy（Windows 语音识别）时识别设备下拉禁用；
+  5. EngineHint 显示当前识别设备；Qwen3 场景注明固定 CPU。
+- 验证：新增 AppConfigLoaderTests 2 例（Asr.Device 默认 auto / 非法值校验）；
+  67/67 单测通过；GUI 启动无异常（标题栏日志正常）。
+
 ## 待办（Phase 5 范围）
 
 - [x] whisper 经典 API 自实现（mel 谱 + BPE decode + 贪心；U4a 解阻塞）→ ASR 三语 U2/U3 验证、NPU/CPU 延迟实测

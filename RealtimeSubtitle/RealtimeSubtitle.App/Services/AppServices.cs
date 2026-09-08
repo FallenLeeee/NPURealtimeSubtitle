@@ -217,13 +217,14 @@ public sealed class AppServices : IDisposable
     public static ISpeechRecognizer BuildRecognizer(AppConfig config, string asrModelDir, LogSink log)
     {
         string language = config.Asr.Language ?? "auto";
-        log.Info("ASR routing: language={0} model={1}", language, asrModelDir);
+        string device = string.IsNullOrWhiteSpace(config.Asr.Device) ? "auto" : config.Asr.Device;
+        log.Info("ASR routing: language={0} model={1} device={2}", language, asrModelDir, device);
         return language switch
         {
-            "zh" => new OpenVinoQwen3AsrRecognizer(asrModelDir, "zh", log),
-            "ja" => new OpenVinoSenseVoiceRecognizer(asrModelDir, log, vad: config.Vad),
+            "zh" => new OpenVinoQwen3AsrRecognizer(asrModelDir, "zh", log, device: device),
+            "ja" => new OpenVinoSenseVoiceRecognizer(asrModelDir, log, vad: config.Vad, device: device),
             // "en" → whisper.en (mono flag in the model) ; "auto"/others → multilingual whisper.
-            _ => new OpenVinoWhisperClassicRecognizer(asrModelDir, device: "auto",
+            _ => new OpenVinoWhisperClassicRecognizer(asrModelDir, device: device,
                 language: config.SourceLanguage, log, vad: config.Vad),
         };
     }
@@ -290,7 +291,8 @@ public sealed class AppServices : IDisposable
         SwitchAsrBackend(() =>
         {
             var (config, _) = AppConfigLoader.Load();
-            return new OpenVinoWhisperClassicRecognizer(whisperModelDir, "auto", config.SourceLanguage, Log, vad: config.Vad);
+            string device = string.IsNullOrWhiteSpace(config.Asr.Device) ? "auto" : config.Asr.Device;
+            return new OpenVinoWhisperClassicRecognizer(whisperModelDir, device, config.SourceLanguage, Log, vad: config.Vad);
         });
     }
 

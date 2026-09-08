@@ -32,6 +32,8 @@ public sealed class AppConfig
 
         if (Asr is null || Asr.PreferredBackend is not ("windows-ai" or "legacy" or "whisper"))
             issues.Add("Asr.PreferredBackend must be one of: windows-ai | legacy | whisper.");
+        if (Asr is not null && Asr.Device is not ("auto" or "NPU" or "CPU"))
+            issues.Add("Asr.Device must be one of: auto | NPU | CPU.");
 
         if (Translation is null) issues.Add("Translation section is missing.");
         else
@@ -79,6 +81,9 @@ public sealed class AsrConfig
     public string PreferredBackend { get; set; } = "whisper";
     // Whisper 模型大小：tiny | base | small（默认 base；可通过 GUI 热交换）。
     public string Model { get; set; } = "base";
+    // ASR 推理设备（P6-18，GUI 与翻译设备分开设置）：auto | NPU | CPU。
+    // auto → 各后端默认（whisper classic/SenseVoice 尝试 NPU；Qwen3 固定 CPU）。
+    public string Device { get; set; } = "auto";
     // ASR 路由的源语言（P6-4）：auto | zh | en | ja。
     // auto → 多语言 whisper；zh → Qwen3-ASR；ja → SenseVoice；en → whisper.en。
     public string Language { get; set; } = "auto";

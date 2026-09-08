@@ -9,14 +9,14 @@
 | 能力 | 状态 | 说明 |
 |---|---|---|
 | WASAPI loopback 采集 | ✅ | `RealtimeSubtitle.Windows/WindowsAudio.cs`；mix 格式自动适配，事件驱动 |
-| ASR（Whisper 回环，默认） | ✅ | **识别语言下拉（自动/中文/英语/日语）按语言路由专精模型**：自动→多语言 Whisper（tiny/base/small 热切换）、英语→**whisper.en**、中文→**Qwen3-ASR**（准、~0.5-2s/段、仅终稿）、日语→**SenseVoice**（单程快速）；扬声器/系统音频回环，无需麦克风权限；流式 partial + 段级 final；NPU 编码器 + KV-cache 状态解码器（P6-2/P6-4） |
-| ASR（Windows 语音识别，可选） | ✅ | `Windows.Media.SpeechRecognition`（麦克风，需权限）；GUI 下拉可选 |
-| 翻译（Marian opus-mt） | ✅ | **按源语言路由**：en/auto→**en→zh**、日语（SenseVoice）→**ja→zh** 专用模型（P6-10）；GUI"翻译设备"选择真实生效（P6-12，原硬编码 auto）：**auto**=NPU(enc)+CPU(dec) 混合（encoder 静态 [1,64] 一次编译跑 NPU；decoder 动态不可 NPU 编译 → CPU）；**CPU**=全 CPU 最快（实测稳态 15ms/句 vs NPU 20ms/句，NPU 对翻译无速度收益）；**解码器启用隐式 KV cache，68-119ms/句含首编译**（P6-8，~1.5-1.7x） |
+| ASR（Whisper 回环，默认） | ✅ | **识别语言下拉（自动/中文/英语/日语）按语言路由专精模型**：自动→多语言 Whisper（tiny/base/small 热切换）、英语→**whisper.en**、中文→**Qwen3-ASR**（准、~0.5-2s/段、仅终稿，固定 CPU）、日语→**SenseVoice**（单程快速）；扬声器/系统音频回环，无需麦克风权限；流式 partial + 段级 final；**识别设备单独下拉（auto=优先 NPU 回退 CPU / NPU / CPU，P6-18）**；NPU 编码器 + KV-cache 状态解码器（P6-2/P6-4） |
+| ASR（Windows 语音识别，可选） | ✅ | `Windows.Media.SpeechRecognition`（麦克风，需权限）；GUI 下拉可选（无设备概念，识别设备下拉禁用） |
+| 翻译（Marian opus-mt） | ✅ | **按源语言路由**：en/auto→**en→zh**、日语（SenseVoice）→**ja→zh** 专用模型（P6-10）；GUI「翻译设备」与「识别设备」**分开设置**（P6-18）：翻译 **auto**=CPU（不与 ASR 争 NPU，实测最快；P6-16）、**NPU**=encoder NPU + decoder CPU（首编译 ~2.3s）、**CPU**=全 CPU（实测稳态 15ms/句）；**解码器启用隐式 KV cache，68-119ms/句含首编译**（P6-8，~1.5-1.7x） |
 | 覆盖层（真透明） | ✅ | **WPF 逐像素透明**（UpdateLayeredWindow，业界标准）；穿透/置顶/不抢焦点/底部居中 |
 | 端到端链路 | ✅ | `--demo`（录播源）→ 翻译 → 覆盖层上屏验证通过 |
 | 真声闭环 | ✅ | `--live` 探针实测通过（Windows 语音识别/whisper → 翻译 → 覆盖层） |
 | 模型自动补齐 | ✅ | 多根目录解析 + 本地离线包（dist zip）+ 可配置网络源（Models.BaseUrl） |
-| 控制面板 UI | ✅ | 模式/字幕样式/语音引擎/翻译设备选择、自定义翻译模型路径、模型状态灯、下载进度、日志卡片；**Win11 Mica 背景 + 整页可滚动**（P6-10） |
+| 控制面板 UI | ✅ | 模式/字幕样式、**语音引擎（语言/模型/识别设备）与翻译（设备/模型）分卡设置**（P6-18）、自定义翻译模型路径、模型状态灯、下载进度、日志卡片；**Win11 Mica 背景 + 整页可滚动**（P6-10） |
 | Windows AI Speech（微软新 API） | ⚠️ | 本机硬件不可用（`0x8A1F022F`，上游 [WindowsAppSDK#6561](https://github.com/microsoft/WindowsAppSDK/issues/6561)）；能力机器上可配置 |
 
 ## 构建

@@ -96,6 +96,7 @@ public sealed partial class MainWindow : Window
         SetupAsrCombo();
         SetupLanguageCombo();
         SetupWhisperModelCombo();
+        SetupAsrDeviceCombo();
         SetupTransDeviceCombo();
         TransModelBox.Text = _config.Translation.ModelPath ?? "";
         RefreshModelStatus();
@@ -194,6 +195,18 @@ public sealed partial class MainWindow : Window
             if (item is ComboBoxItem cbi && cbi.Tag as string == _config.Asr.Model)
             {
                 WhisperModelCombo.SelectedItem = cbi;
+                break;
+            }
+        }
+    }
+
+    private void SetupAsrDeviceCombo()
+    {
+        foreach (var item in AsrDeviceCombo.Items)
+        {
+            if (item is ComboBoxItem cbi && cbi.Tag as string == (_config.Asr.Device ?? "auto"))
+            {
+                AsrDeviceCombo.SelectedItem = cbi;
                 break;
             }
         }
@@ -316,6 +329,38 @@ public sealed partial class MainWindow : Window
         string language = _config.Asr.Language ?? "auto";
         // The size dropdown only applies to the whisper family (auto/en).
         WhisperModelCombo.IsEnabled = whisper && language is "auto" or "en";
+        // ASR device picker applies to every OpenVINO backend (whisper/SenseVoice/Qwen3);
+        // legacy (Windows speech) has no device concept.
+        AsrDeviceCombo.IsEnabled = whisper;
+    }
+
+    /// <summary>ASR inference device change (P6-18): persists, and while running hot-swaps
+    /// the recognizer so the device pick takes effect without restarting the pipeline.</summary>
+    private async void OnAsrDeviceChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (AsrDeviceCombo.SelectedItem is not ComboBoxItem cbi || cbi.Tag is not string tag) return;
+        if ((_config.Asr.Device ?? "auto") == tag) return;
+
+        _config.Asr.Device = tag;
+        SaveConfig();
+        UpdateEngineHint();
+
+        if (_services is not null && _config.Asr.PreferredBackend != "legacy")
+        {
+            try
+            {
+                string language = _config.Asr.Language ?? "auto";
+                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId(language, _config.Asr.Model));
+                _services.SwitchAsrBackend(() => Services.AppServices.BuildRecognizer(_config, dir, _log));
+                SetStatus($"已热切换识别设备：{tag}", OkBrush);
+                _log.Info("ASR device hot-switched to {0}", tag);
+            }
+            catch (Exception ex)
+            {
+                _log.Error("ASR device switch failed: {0}", ex);
+                SetStatus($"识别设备切换失败：{ex.Message}", BadBrush);
+            }
+        }
     }
 
     private void OnTransDeviceChanged(object sender, SelectionChangedEventArgs e)
@@ -340,14 +385,15 @@ public sealed partial class MainWindow : Window
     {
         string? asr = (AsrCombo.SelectedItem as ComboBoxItem)?.Tag as string;
         string language = _config.Asr.Language ?? "auto";
+        string asrDevice = string.IsNullOrWhiteSpace(_config.Asr.Device) ? "auto" : _config.Asr.Device;
         if (asr == "whisper")
         {
             EngineHint.Text = language switch
             {
-                "zh" => "中文 → Qwen3-ASR 1.7B（最准；约 0.5-2s/段，仅出终稿）。识别扬声器/系统音频（回环），无需麦克风权限。",
-                "ja" => "日语 → SenseVoiceSmall（单程快速，~0.1-0.2s/段）→ opus-mt ja→zh 翻译。识别扬声器/系统音频（回环），无需麦克风权限。",
-                "en" => "英语 → Whisper .en（tiny/base/small 生效；~0.1-0.4s/段）。识别扬声器/系统音频（回环），无需麦克风权限。",
-                _ => "自动 → 多语言 Whisper（自动检测语言；~0.1-0.4s/段）。识别扬声器/系统音频（回环），无需麦克风权限；识别模型可热切换（tiny/base/small）。",
+                "zh" => $"中文 → Qwen3-ASR 1.7B（最准；约 0.5-2s/段，仅出终稿；识别设备 {asrDevice}，Qwen3 固定 CPU）。识别扬声器/系统音频（回环），无需麦克风权限。",
+                "ja" => $"日语 → SenseVoiceSmall（单程快速，~0.1-0.2s/段，识别设备 {asrDevice}）→ opus-mt ja→zh 翻译。识别扬声器/系统音频（回环），无需麦克风权限。",
+                "en" => $"英语 → Whisper .en（tiny/base/small 生效；~0.1-0.4s/段，识别设备 {asrDevice}）。识别扬声器/系统音频（回环），无需麦克风权限。",
+                _ => $"自动 → 多语言 Whisper（自动检测语言；~0.1-0.4s/段，识别设备 {asrDevice}）。识别扬声器/系统音频（回环），无需麦克风权限；识别模型可热切换（tiny/base/small）。",
             };
         }
         else
@@ -571,6 +617,7 @@ public sealed partial class MainWindow : Window
             LanguageCombo.IsEnabled = false;
             TransDeviceCombo.IsEnabled = false;
             WhisperModelCombo.IsEnabled = false;
+            AsrDeviceCombo.IsEnabled = false;
             ActionHint.Text = "运行中 · 覆盖层位于屏幕下方居中";
             _log.Info("Pipeline started ({0}); asr={1}", live ? "live" : "demo", backend);
         }
@@ -601,7 +648,7 @@ public sealed partial class MainWindow : Window
         LanguageCombo.IsEnabled = true;
         TransDeviceCombo.IsEnabled = true;
         WhisperModelCombo.IsEnabled = true;
-        UpdateWhisperModelEnabled();
+        UpdateWhisperModelEnabled(); // also re-enables AsrDeviceCombo per backend
         ActionHint.Text = "";
         SetStatus("已停止", NeutralBrush);
     }

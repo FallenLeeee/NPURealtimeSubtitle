@@ -50,7 +50,8 @@ public sealed class OpenVinoSenseVoiceRecognizer : ISpeechRecognizer
     private readonly List<Task> _inFlight = new();
 
     public OpenVinoSenseVoiceRecognizer(string modelDir, LogSink? log = null,
-        RealtimeSubtitle.Core.Configuration.VadConfig? vad = null)
+        RealtimeSubtitle.Core.Configuration.VadConfig? vad = null,
+        string device = "auto")
     {
         _log = log ?? LogSink.Default;
         _core = new OpenVinoSharp.Core();
@@ -75,11 +76,13 @@ public sealed class OpenVinoSenseVoiceRecognizer : ISpeechRecognizer
         if (File.Exists(staticPath) && _staticN > 0)
         {
             modelFile = "model_static.onnx";
-            // NPU path (P6-9): the int8 dynamic-quantized graph mis-computes on the NPU, but
-            // the dequantized pure-FP32 static export is correct there and ~4.6x faster
-            // (58 ms vs 267 ms). Prefer it when present; otherwise the int8 static on CPU.
+            // P6-9: the int8 dynamic-quantized graph mis-computes on the NPU, but dequantized
+            // pure-FP32 static export is correct there and ~4.6x faster (58 ms vs 267 ms).
+            // P6-18: device routing now mirrors the GUI ("auto"/"NPU" → try NPU FP32 first,
+            // fall back to CPU; "CPU" → straight CPU). "auto" prefers NPU when available.
             string fp32Path = Path.Combine(modelDir, "model_fp32_static.onnx");
-            if (File.Exists(fp32Path))
+            bool npuArmed = device is "NPU" or "auto";
+            if (File.Exists(fp32Path) && npuArmed)
             {
                 try
                 {
@@ -92,10 +95,15 @@ public sealed class OpenVinoSenseVoiceRecognizer : ISpeechRecognizer
                     _log.Warn("SenseVoice: FP32 static NPU compile failed ({0}); using CPU.", ex.Message);
                 }
             }
+            else if (File.Exists(fp32Path))
+            {
+                _model = _core.CompileModel(fp32Path, "CPU");
+                _log.Info("SenseVoice: FP32 static [1, {0}, 560] on CPU (device={1}).", _staticN, device);
+            }
             else
             {
                 _model = _core.CompileModel(staticPath, "CPU");
-                _log.Info("SenseVoice: int8 static [1, {0}, 560] on CPU (FP32 export not present).", _staticN);
+                _log.Info("SenseVoice: int8 static [1, {0}, 560] on CPU (FP32 export not present; device={1}).", _staticN, device);
             }
         }
         else

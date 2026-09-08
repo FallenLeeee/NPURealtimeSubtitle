@@ -69,7 +69,8 @@ public class AppConfigLoaderTests
             {
               "subtitleMode": "xyz",
               "audio": { "sampleRate": 48000 },
-              "translation": { "device": "GPU" }
+              "translation": { "device": "GPU" },
+              "asr": { "device": "TPU" }
             }
             """);
 
@@ -79,5 +80,17 @@ public class AppConfigLoaderTests
         Assert.Contains(issues, i => i.Contains("SubtitleMode", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(issues, i => i.Contains("16000", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(issues, i => i.Contains("Translation.Device", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(issues, i => i.Contains("Asr.Device", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AsrDevice_DefaultsToAuto()
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "nope.json");
+
+        var (config, issues) = AppConfigLoader.Load(path);
+
+        Assert.Empty(issues);
+        Assert.Equal("auto", config.Asr.Device);
     }
 }
