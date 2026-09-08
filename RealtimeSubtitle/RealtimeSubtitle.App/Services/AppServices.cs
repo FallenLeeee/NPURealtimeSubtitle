@@ -120,9 +120,15 @@ public sealed class AppServices : IDisposable
     /// sentence-by-sentence ("時を巡って今…"), so translating every tick would flood the
     /// queue with near-identical sentences; dedupe the exact text and cap the cadence.
     /// Finals always translate (unchanged path), so the final correction still lands.
+    /// P6-17: partials shorter than <see cref="MinPartialTranslateChars"/> are skipped —
+    /// a 1-2 char fragment ("W", "时") translates to garbage that flashes on screen
+    /// (observed via --demo probe: 'W' → '时 时'), which reads as "translation lag/glitch".
     /// </summary>
+    private const int MinPartialTranslateChars = 3;
+
     private bool ShouldTranslatePartial(string clean)
     {
+        if (clean.Length < MinPartialTranslateChars) return false;
         if (string.Equals(clean, _lastPartialQueued, StringComparison.Ordinal)) return false;
         if (DateTimeOffset.UtcNow - _lastPartialQueuedAt < TimeSpan.FromMilliseconds(700)) return false;
 
