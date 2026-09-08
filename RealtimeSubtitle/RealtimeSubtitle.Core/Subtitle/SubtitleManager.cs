@@ -146,6 +146,20 @@ public sealed class SubtitleManager
         Publish();
     }
 
+    /// <summary>
+    /// P6-22: a pure-audio-event segment (interlude / [Music] burst — ASR emits junk with no
+    /// lyrics) must CLEAR the overlay instead of freezing it on the last lyric line. The
+    /// capture keeps feeding junk (never a Final with text), so without this the subtitle
+    /// stays stuck on the previous line and reads as "字幕没输出了".
+    /// </summary>
+    public void Clear()
+    {
+        if (Current is null && _history.Count == 0) return;
+        Current = null;
+        _history.Clear();
+        CurrentChanged?.Invoke(new SubtitleSnapshot(string.Empty, string.Empty, SubtitleItemState.Expired));
+    }
+
     private void Publish()
     {
         if (Current is null) return;

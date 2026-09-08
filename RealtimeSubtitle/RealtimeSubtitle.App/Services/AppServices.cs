@@ -103,7 +103,14 @@ public sealed class AppServices : IDisposable
         recognizer.Partial += p =>
         {
             string clean = CleanAsrText(p.Text);
-            if (clean.Length == 0) return; // pure audio-event annotation
+            if (clean.Length == 0)
+            {
+                // P6-22: interlude / [Music] burst — no lyrics. Clear the overlay instead of
+                // freezing it on the previous line (the capture keeps feeding junk, so without
+                // this the subtitle stays stuck and reads as "字幕没输出了").
+                Subtitles.Clear();
+                return;
+            }
 
             // P6-14: provisional translation alongside the live preview. Translate changed
             // partials (throttled + deduplicated) so lyrics scroll WITH their translation
@@ -117,7 +124,12 @@ public sealed class AppServices : IDisposable
         recognizer.Final += f =>
         {
             string clean = CleanAsrText(f.Text);
-            if (clean.Length == 0) return; // pure audio-event annotation
+            if (clean.Length == 0)
+            {
+                // Same as Partial: a junk final (e.g. "*outro*") must clear, not freeze.
+                Subtitles.Clear();
+                return;
+            }
             // P6-13: capture the stable line id so the late translation lands on THIS line
             // (matching by text failed when the next sentence's partial arrived first).
             int lineId = Subtitles.OnSourceFinal(clean, f.Timestamp);

@@ -163,7 +163,17 @@ public partial class App : Application
                 return;
             }
 
+            // P6-20: --live probe also writes the rolling file log (same sink as the GUI) so
+            // headless tests are inspectable afterwards (P6-16 translation lines included).
             var log = new LogSink { MinLevel = LogLevel.Info };
+            try
+            {
+                log.LogFile = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "RealtimeSubtitle", "logs", $"app-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+            }
+            catch { }
+
             using var services = Services.AppServices.CreateLive(modelDir, whisperDir, log);
             SubtitleOverlayHost.Start(services.Subtitles.Config);
             services.Subtitles.CurrentChanged += s => SubtitleOverlayHost.PushSnapshot(s);

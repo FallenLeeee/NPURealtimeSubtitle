@@ -29,6 +29,10 @@ public class AsrJunkFilterTests
     [InlineData("*intro*")]
     [InlineData("*applause*")]
     [InlineData("(outro music)")]
+    // P6-21: whisper.en BGM descriptors "(upbeat music)" / "(soft music)" —
+    // every descriptor word is an event word → filtered.
+    [InlineData("(upbeat music)")]
+    [InlineData("(mellow music)")]
     public void JunkIsFiltered(string text) => Assert.True(AsrJunkFilter.IsJunk(text));
 
     [Theory]
@@ -58,6 +62,9 @@ public class AsrJunkFilterTests
     [InlineData("*outro*", "")]
     [InlineData("*music* I feel love", "I feel love")]
     [InlineData("(outro music)", "")]
+    // P6-21: descriptor + music → dropped; descriptor + real lyric → lyric survives.
+    [InlineData("(upbeat music)", "")]
+    [InlineData("(upbeat music) hello", "hello")]
     public void StripAnnotationsCleans(string input, string expected)
         => Assert.Equal(expected, AsrJunkFilter.StripAnnotations(input));
 }

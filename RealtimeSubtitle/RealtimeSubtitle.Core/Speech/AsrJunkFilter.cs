@@ -18,6 +18,7 @@ public static class AsrJunkFilter
         "applause", "掌声", "laughter", "笑声", "silence",
         "instrumental", "noise", "melody",
         "outro", "intro", // whisper.en tags song sections "*outro*" / "*intro*" (P6-19)
+        "upbeat", "mellow", "soft", "loud", // whisper.en BGM descriptors "(upbeat music)" (P6-21)
     };
 
     private static readonly string[] Prefixes =
@@ -26,6 +27,7 @@ public static class AsrJunkFilter
         "[instrumental", "[noise", "[melody", "♪", "♫",
         "<|music|>", "<|applause|>", "<|laughter|>", "<|noise|>", "<|silence|>",
         "*music", "*outro", "*intro", "*applause", "*laughter", "*instrumental", "*noise", // P6-19
+        "(upbeat", "(mellow", "(soft", "(loud", // P6-21
     };
 
     /// <summary>Trim characters applied before matching (surviving annotation fragments).</summary>

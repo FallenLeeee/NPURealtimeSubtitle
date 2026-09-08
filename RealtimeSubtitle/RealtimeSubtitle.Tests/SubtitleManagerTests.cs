@@ -137,4 +137,23 @@ public class SubtitleManagerTests
         Assert.Equal(string.Empty, first.TranslatedText);
         Assert.Equal(SubtitleItemState.Expired, first.State);
     }
+
+    [Fact]
+    public void Clear_EmitsEmptySnapshot_ForInterludeJunk()
+    {
+        // P6-22: a pure-[Music] interlude must blank the overlay, not freeze the last lyric.
+        var m = Create();
+        SubtitleSnapshot? snapshot = null;
+        m.CurrentChanged += s => snapshot = s;
+
+        m.OnSourcePartial("I feel love", DateTimeOffset.Now);
+        Assert.Equal("I feel love", m.Current!.SourceText);
+
+        m.Clear();
+        Assert.Null(m.Current);
+        Assert.Empty(m.History);
+        Assert.NotNull(snapshot);
+        Assert.Equal(string.Empty, snapshot.Value.SourceText);
+        Assert.Equal(string.Empty, snapshot.Value.TranslatedText);
+    }
 }
