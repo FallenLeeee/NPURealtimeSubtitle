@@ -129,7 +129,7 @@
                     <TextBlock Text="翻译设备" Grid.Row="3" Style="{StaticResource FieldLabel}" />
                     <ComboBox x:Name="TransDeviceCombo" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch"
                               SelectionChanged="OnTransDeviceChanged">
-                        <ComboBoxItem Content="自动（实测 NPU/CPU 选优）" Tag="auto" />
+                        <ComboBoxItem Content="自动（CPU：不与 ASR 争 NPU，实测更快）" Tag="auto" />
                         <ComboBoxItem Content="NPU（静态形状，首次编译较慢）" Tag="NPU" />
                         <ComboBoxItem Content="CPU" Tag="CPU" />
                     </ComboBox>

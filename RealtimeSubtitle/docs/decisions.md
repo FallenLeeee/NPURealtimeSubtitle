@@ -472,6 +472,27 @@ Remove-Item Env:SSL_CERT_FILE（变量指向不存在的 certifi 文件）
      重新应用该主题，运行中切换深浅色立即刷新，无需重启应用。
 - 验证：构建通过；需 GUI 手测（系统设置切换深浅色看标题栏/按钮颜色跟随）。
 
+## P6-16（2026-09-09）：翻译逐句日志 + 翻译真实延迟实测
+
+- 背景：用户反馈英语歌词"翻译跟不上"；此前 `TranslationQueue.Completed` 只回填字幕、
+  不写任何日志——管线是否丢了译文、每句耗时多少完全不可观测。
+- 修复（AppServices）：Completed 处理器记录每句翻译 `Translated (line N) in X ms on DEVICE:
+  'src' → 'tgt'`；译文为空时记 Warn。GUI 文件日志（%LOCALAPPDATA%\RealtimeSubtitle\logs）现在
+  可直接看到每句翻译耗时、设备与落行。
+- 实测（WavDumpTool --translate，opus-mt-en-zh-int8，本机 RTX5060 关）：
+  - CPU：**88ms/句**；NPU（混合 enc NPU + dec CPU）：**99ms/句**。
+  - 结论：翻译本身不慢，跟不上歌词的瓶颈在"连续演唱时 final 稀疏、翻译只挂 final"
+    （P6-14 已把 partial 也接翻译）；若用户仍感觉跟不上，日志可立即定位是翻译排队、
+    设备争用还是 UI 回填问题。
+
+## P6-17（2026-09-09）：短 partial 不触发翻译（防垃圾译文闪屏）
+
+- 现象（--demo 探针实测）：1-2 字符的半截 partial（如 "W"）被送入翻译，produce 垃圾译文
+  （"W" → "时 时"）闪现在覆盖层，用户感知为"翻译错乱/跟不上"。
+- 修复：`ShouldTranslatePartial` 增加最小长度门槛 `MinPartialTranslateChars = 3`——
+  短于 3 字符的 partial 仅作原文预览、不翻译；final 不受限（最终必译）。
+- 验证：`--demo` 探针 30s 后 LINES=「We made it.|我们成功了」，译文正确回填。
+
 ## 待办（Phase 5 范围）
 
 - [x] whisper 经典 API 自实现（mel 谱 + BPE decode + 贪心；U4a 解阻塞）→ ASR 三语 U2/U3 验证、NPU/CPU 延迟实测

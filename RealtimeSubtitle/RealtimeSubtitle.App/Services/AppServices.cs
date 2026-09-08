@@ -42,11 +42,21 @@ public sealed class AppServices : IDisposable
         // GUI's 翻译设备 dropdown (auto/NPU/CPU) previously never reached the runtime:
         // this line hard-coded "auto" and disregarded config.Translation.Device, so users
         // could neither force CPU nor see the real device. Route it through now (P6-12).
+        // P6-16: "auto" resolves to CPU for translation — the ASR encoder (whisper/SenseVoice)
+        // already occupies the NPU in live listening; a second NPU stream for the translator
+        // encoder queues behind it, and measured translation latency is CPU 88ms vs NPU 99ms
+        // (P6-12), so CPU avoids contention AND is faster. Explicit "NPU" still honors the
+        // user's device preference.
         string transDevice = string.IsNullOrWhiteSpace(config.Translation.Device)
             ? "auto"
             : config.Translation.Device;
+        if (transDevice == "auto") transDevice = "CPU";
         Log = log;
-        Log.Info("Translation device from config: {0}", transDevice);
+        Log.Info("Translation device from config: {0}{1}",
+            config.Translation.Device ?? "(empty)",
+            transDevice == "CPU" && !string.IsNullOrWhiteSpace(config.Translation.Device)
+                ? " (auto → CPU: translator shares NPU with ASR, CPU measured faster)"
+                : "");
         var translator = new OpenVinoTranslator(translationModelPath, transDevice, log);
         _queue = new TranslationQueue(translator, capacity: Math.Max(2, config.Translation.MaxQueue));
         TranslationQueue = _queue;
