@@ -148,7 +148,7 @@ public sealed partial class MainWindow : Window
 
     private void SetupModeCombo()
     {
-        ModeCombo.SelectedIndex = 0; // 演示字幕（可随时切换）
+        ModeCombo.SelectedIndex = 1; // 真声直播（可随时切换；索引 1 = live）
         UpdateModeHint();
     }
 

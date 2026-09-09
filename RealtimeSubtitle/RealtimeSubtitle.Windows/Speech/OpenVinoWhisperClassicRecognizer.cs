@@ -45,6 +45,8 @@ public sealed class OpenVinoWhisperClassicRecognizer : ISpeechRecognizer
     private DateTimeOffset _lastPartial = DateTimeOffset.MinValue;
     private int _junkBurst;           // consecutive junk decodes (P6-11: suppress partial spam)
     private const int JunkBurstLimit = 3;
+    private long _junkSinceMs = -1;   // P6-23: start of the current junk run (TickCount64), -1 = none
+    private long _lastJunkInfoMs;     // P6-23: last time we surfaced the "pure music" Info line
     private readonly object _inFlightSync = new();
     private readonly List<Task> _inFlight = new();
 
@@ -165,6 +167,7 @@ public sealed class OpenVinoWhisperClassicRecognizer : ISpeechRecognizer
                 if (vad.State == VadState.Speech && _segmentStart < 0)
                 {
                     _segmentStart = Math.Max(0, _ring.Count - PrepadSamples);
+                    _log.Debug("Whisper(classic): VAD speech start (rms={0:F3}).", vad.Rms);
                 }
                 else if (vad.State == VadState.Silence && _segmentStart >= 0)
                 {
@@ -192,7 +195,11 @@ public sealed class OpenVinoWhisperClassicRecognizer : ISpeechRecognizer
             if (_segmentStart >= 0)
             {
                 int segLen = _ring.Count - _segmentStart;
-                bool bursting = Volatile.Read(ref _junkBurst) >= JunkBurstLimit;
+                int burst = Volatile.Read(ref _junkBurst);
+                // Throttle while junk ([Music]) floods, but retry at least every ~5 s so a song
+                // that later has lyrics recovers without waiting for a VAD gap or ring-cap final.
+                bool bursting = burst >= JunkBurstLimit
+                    && DateTimeOffset.UtcNow - _lastPartial < TimeSpan.FromMilliseconds(5000);
                 if (!bursting
                     && segLen >= SampleRate * 8 / 10
                     && DateTimeOffset.UtcNow - _lastPartial >= TimeSpan.FromMilliseconds(1200))
@@ -209,8 +216,12 @@ public sealed class OpenVinoWhisperClassicRecognizer : ISpeechRecognizer
     {
         int end = _ring.Count;
         int count = end - _segmentStart;
+        // Continuous music/speech hits the 8 s ring cap with count == MaxRingSamples + a partial
+        // chunk. The old `count > MaxRingSamples → return` dropped that entire segment, so a song
+        // without pauses produced zero finals (and junk-burst had already muted partials).
+        if (count > MaxRingSamples) count = MaxRingSamples;
         _segmentStart = -1;
-        if (count < MinSegmentSamples || count > MaxRingSamples) return;
+        if (count < MinSegmentSamples) return;
 
         float[] segment = _ring.GetRange(end - count, count).ToArray();
         if (_ring.Count > PrepadSamples) _ring.RemoveRange(0, _ring.Count - PrepadSamples);
@@ -272,15 +283,50 @@ public sealed class OpenVinoWhisperClassicRecognizer : ISpeechRecognizer
             // P6-11: audio-event annotations ([Music] etc.) are not speech. Count consecutive
             // junk decodes to suppress the partial-encode flood, and log them at Debug so the
             // LogBox does not scroll "[Music]" every 1.2 s while a song plays.
+            // P6-23: surface the "pure music, no lyrics" state at Info once per ~15 s so a
+            // silent subtitle period is diagnosable ("recognizer alive, just [Music]") instead
+            // of looking like a dead pipeline.
             bool junk = AsrJunkFilter.IsJunk(text);
             if (junk)
             {
-                Interlocked.Increment(ref _junkBurst);
+                int burst = Interlocked.Increment(ref _junkBurst);
+                long now = Environment.TickCount64;
+                if (Interlocked.Read(ref _junkSinceMs) < 0)
+                {
+                    Interlocked.Exchange(ref _junkSinceMs, now);
+                }
+
                 _log.Debug("Whisper(classic){0} junk decode ({1:N0} ms): \"{2}\"",
                     partial ? " (partial)" : "", total.ElapsedMilliseconds, text);
+                // Finals must always surface (they close the segment); only partials throttle.
+                if (!partial)
+                {
+                    Interlocked.Exchange(ref _junkBurst, 0);
+                }
+                else if (burst >= JunkBurstLimit)
+                {
+                    // Keep the throttle, but retry a partial every few seconds so a song that
+                    // later yields lyrics can recover without waiting for a VAD silence.
+                    _log.Info("Whisper(classic): junk burst {0}; partials throttled.", burst);
+                }
+
+                // P6-23: tell the user once per ~15 s that the recognizer is alive but the
+                // source is a pure-music segment (no lyrics to show).
+                long runSec = (now - Interlocked.Read(ref _junkSinceMs)) / 1000L;
+                if (runSec >= 15 && now - Interlocked.Read(ref _lastJunkInfoMs) >= 15_000)
+                {
+                    Interlocked.Exchange(ref _lastJunkInfoMs, now);
+                    _log.Info("Whisper(classic): 纯音乐段持续 {0}s — 识别器运行中，但仅检测到 [Music] 类事件，无歌词可显示。", runSec);
+                }
             }
             else
             {
+                if (Interlocked.Read(ref _junkSinceMs) >= 0)
+                {
+                    _log.Info("Whisper(classic): 恢复到歌词（纯音乐段结束）。");
+                }
+
+                Interlocked.Exchange(ref _junkSinceMs, -1);
                 Interlocked.Exchange(ref _junkBurst, 0);
                 _log.Info("Whisper(classic){0} in {1:N0} ms (mel {2}, enc {3}, dec {4}): \"{5}\"",
                     partial ? " (partial)" : "", total.ElapsedMilliseconds, melMs, encMs, decMs, text);

@@ -19,6 +19,12 @@ public static class AsrJunkFilter
         "instrumental", "noise", "melody",
         "outro", "intro", // whisper.en tags song sections "*outro*" / "*intro*" (P6-19)
         "upbeat", "mellow", "soft", "loud", // whisper.en BGM descriptors "(upbeat music)" (P6-21)
+        // whisper audio-event tags observed on music (not lyrics)
+        "blank_audio", "blank audio", "no audio", "no speech", "buzzing", "static",
+        "white noise", "background noise", "humming", "hum", "clicking", "popping",
+        "rumbling", "typing", "keyboard", "footsteps", "breathing", "sighing",
+        "coughing", "sneezing", "wind", "rain", "traffic", "beep", "beeps",
+        "inaudible", "unintelligible", "foreign", // whisper.en "(inaudible)" tags (P6-23)
     };
 
     private static readonly string[] Prefixes =
@@ -28,6 +34,10 @@ public static class AsrJunkFilter
         "<|music|>", "<|applause|>", "<|laughter|>", "<|noise|>", "<|silence|>",
         "*music", "*outro", "*intro", "*applause", "*laughter", "*instrumental", "*noise", // P6-19
         "(upbeat", "(mellow", "(soft", "(loud", // P6-21
+        "[blank", "[no audio", "[no speech", "[buzz", "[static", "[white noise",
+        "[background", "[hum", "[beep", // music-track audio tags
+        "[inaudible", "[unintelligible", "[foreign", // whisper.en "(inaudible)" tags (P6-23)
+        "(inaudible", "(unintelligible", // P6-23
     };
 
     /// <summary>Trim characters applied before matching (surviving annotation fragments).</summary>
@@ -61,8 +71,25 @@ public static class AsrJunkFilter
         }
 
         // "(outro music)" / "(music playing)" → every word is an annotation → junk (P6-19).
-        return lowered.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .All(word => Standalone.Contains(word));
+        if (lowered.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .All(word => Standalone.Contains(word)))
+        {
+            return true;
+        }
+
+        // Pure bracketed audio-event tags: "[BLANK_AUDIO]", "[no audio]", "[buzzing]".
+        // Lyrics never look like a lone [word/phrase] with no punctuation run-on.
+        if (t.Length >= 2 && (t[0] == '[' || t[0] == '(') && (t[^1] == ']' || t[^1] == ')'))
+        {
+            string inner = t[1..^1].Trim().Trim(TrimChars).ToLowerInvariant().Replace('_', ' ');
+            if (inner.Length > 0 && inner.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                    .All(word => Standalone.Contains(word)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

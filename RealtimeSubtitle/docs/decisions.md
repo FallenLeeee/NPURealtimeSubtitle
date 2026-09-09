@@ -546,6 +546,30 @@ Remove-Item Env:SSL_CERT_FILE（变量指向不存在的 certifi 文件）
   间奏段覆盖层正确清空；新增测试 5 例（`(upbeat music)` 判定 + strip 2 例 + Clear 1 例）；
   **81/81 单测通过**，构建 0 警告 0 错误。
 
+## P6-23（2026-09-09）：纯电音识别不出 + 空 partial 误清字幕 + junk 不可见
+
+- 用户报告"英语识别特别不稳定、一直没识别出内容、偶尔零星错误字幕"。
+- 诊断（离线决定性验证）：网易云播放 **Wicked Wonderland（无人声电音 Radio Edit）**，
+  抓 25s loopback（`SpeechRatio 99.3%`，信号完全正常）离线 `--asr` whisper-en-base →
+  **4 段输出全是 `[Music]`**——识别管线未被改动破坏（凌晨 03:01 同配置识别
+  "Try everything!" 正常、翻译 8/8），是**模型对无人声电音识别不出歌词**（P6-11
+  已知听歌识别率上限），junk 被过滤吞掉后观感为"识别坏了"。
+- 三个追加问题：
+  1. **P6-22 的 Clear 误触**：`CleanAsrText("")` 也返回空 → SenseVoice 静音段空 partial
+     （`""`）命中 `clean.Length == 0` 分支调用 `Subtitles.Clear()`，把上一条字幕清没
+     （闪烁/闪没）。修：仅在"原始文本非空且 `AsrJunkFilter.IsJunk`"（真事件标注段）
+     才 Clear；空文本静默跳过保住上一条字幕（AppServices Partial/Final 两处）。
+  2. **junk 完全不可见**：whisper junk decode 只记 Debug（`MinLevel=Info` 过滤）→ 纯音乐段
+     日志一潭死水像卡死。修（OpenVinoWhisperClassicRecognizer）：连续 junk ≥15s 时打
+     **Info**「纯音乐段持续 Ns — 识别器运行中，但仅检测到 [Music] 类事件，无歌词可显示」，
+     恢复歌词时打 Info「恢复到歌词」；junk-burst 节流日志 Debug→Info。
+  3. **`[inaudible]` / `(inaudible)` 未过滤** → 被翻译成「无声」上屏。修：Standalone 补
+     `inaudible/unintelligible/foreign`，Prefixes 补 `[inaudible`/`(inaudible`/`[unintelligible`。
+- 验证：60s 实机探针——`纯音乐段持续 15s…` 与 `恢复到歌词` Info 正确出现，零星歌词
+  （"I don't wanna fight"→"我不想打架"等）照常翻译；新增测试 4 例
+  （`[inaudible]`/`(inaudible)`/`[unintelligible]` 判定）；**91/91 单测通过**，
+  构建 0 警告 0 错误。
+
 ## 待办（Phase 5 范围）
 
 - [x] whisper 经典 API 自实现（mel 谱 + BPE decode + 贪心；U4a 解阻塞）→ ASR 三语 U2/U3 验证、NPU/CPU 延迟实测

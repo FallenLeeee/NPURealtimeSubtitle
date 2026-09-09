@@ -22,6 +22,12 @@ public sealed class CaptureFeeder : IDisposable
     private Task? _pipeline;
     private int _reconnects;
 
+    // Health counters so a silent live session (no subtitles) is diagnosable from the log alone.
+    private long _samplesFed;
+    private float _peakRms;
+    private int _emptyReads;
+    private long _lastHealthLogTicks = Environment.TickCount64;
+
     public CaptureFeeder(IAudioCapturer capturer, ISpeechRecognizer recognizer, VadConfig vadConfig, LogSink log)
     {
         _capturer = capturer;
@@ -56,7 +62,9 @@ public sealed class CaptureFeeder : IDisposable
                 int n = _capturer.Buffer.TryRead(input);
                 if (n == 0)
                 {
+                    _emptyReads++;
                     await Task.Delay(2, token);
+                    MaybeLogHealth();
                     continue;
                 }
 
@@ -65,15 +73,21 @@ public sealed class CaptureFeeder : IDisposable
                 // built from the same VadConfig, P6-11). No feed-side VAD here — a second VAD
                 // whose result was discarded just wasted CPU and confused the config wiring.
 
+                float chunkPeak = 0f;
                 for (int i = 0; i < m; i++)
                 {
                     float s = Math.Clamp(resampled[i], -1f, 1f);
+                    float abs = Math.Abs(s);
+                    if (abs > chunkPeak) chunkPeak = abs;
                     short sample = (short)(s * short.MaxValue);
                     pcm[i * 2] = (byte)(sample & 0xFF);
                     pcm[i * 2 + 1] = (byte)((sample >> 8) & 0xFF);
                 }
 
+                _samplesFed += m;
+                if (chunkPeak > _peakRms) _peakRms = chunkPeak;
                 _recognizer.WritePcm16(pcm.AsSpan(0, m * 2), DateTimeOffset.UtcNow);
+                MaybeLogHealth();
             }
         }
         catch (OperationCanceledException)
@@ -83,6 +97,39 @@ public sealed class CaptureFeeder : IDisposable
         {
             _log.Error("Capture pipeline crashed: {0}", ex);
         }
+    }
+
+    /// <summary>
+    /// Every ~5 s, report whether the loopback is actually delivering audio. A live session
+    /// with zero subtitles often means the render endpoint was idle (no game/video playing)
+    /// or the mix was silent — this line makes that visible instead of a silent hang.
+    /// </summary>
+    private void MaybeLogHealth()
+    {
+        long now = Environment.TickCount64;
+        if (now - _lastHealthLogTicks < 5000) return;
+        _lastHealthLogTicks = now;
+
+        long samples = Interlocked.Read(ref _samplesFed);
+        float peak = _peakRms;
+        int empty = _emptyReads;
+        _peakRms = 0f;
+
+        if (samples == 0)
+        {
+            _log.Warn(
+                "Capture idle: no loopback PCM in the last 5 s ({0} empty reads). " +
+                "默认渲染端点无应用在出声时不会产生回环数据 — 请确认游戏/视频正在播放且未静音。",
+                empty);
+        }
+        else
+        {
+            _log.Info("Capture health: fed {0} samples ({1:F1}s @16k), peak amplitude {2:F3}, empty reads {3}.",
+                samples, samples / 16000.0, peak, empty);
+        }
+
+        _emptyReads = 0;
+        Interlocked.Exchange(ref _samplesFed, 0);
     }
 
     /// <summary>Handles capturer device-lost events with a bounded reconnect loop.</summary>

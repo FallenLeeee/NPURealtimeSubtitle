@@ -33,6 +33,18 @@ public class AsrJunkFilterTests
     // every descriptor word is an event word → filtered.
     [InlineData("(upbeat music)")]
     [InlineData("(mellow music)")]
+    // Music-track audio tags (whisper.en on instrumental/pauses)
+    [InlineData("[BLANK_AUDIO]")]
+    [InlineData("[blank_audio]")]
+    [InlineData("[no audio]")]
+    [InlineData("[no speech]")]
+    [InlineData("[buzzing]")]
+    [InlineData("[static]")]
+    [InlineData("[white noise]")]
+    // P6-23: whisper.en "(inaudible)" / "[inaudible]" tags — not lyrics.
+    [InlineData("[inaudible]")]
+    [InlineData("(inaudible)")]
+    [InlineData("[unintelligible]")]
     public void JunkIsFiltered(string text) => Assert.True(AsrJunkFilter.IsJunk(text));
 
     [Theory]
