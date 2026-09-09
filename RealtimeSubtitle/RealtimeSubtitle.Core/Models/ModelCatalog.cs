@@ -43,20 +43,21 @@ public static class ModelCatalog
     };
 
     /// <summary>
-    /// Routing (P6-4): the ASR bundle depends on the selected source language —
-    /// zh → Qwen3-ASR, ja → SenseVoice, en → whisper.en, auto/others → multilingual whisper.
+    /// Routing (P6-4 / P6-24): the ASR bundle depends on the selected source language —
+    /// zh → SenseVoice (fast/NPU) or Qwen3-ASR (accurate/slow) via <paramref name="zhBackend"/>,
+    /// ja → SenseVoice, en → whisper.en, auto/others → multilingual whisper.
     /// </summary>
-    public static string AsrModelId(string language, string size) => language switch
+    public static string AsrModelId(string language, string size, string? zhBackend = null) => language switch
     {
-        "zh" => Qwen3AsrModel,
+        "zh" => (zhBackend ?? "sensevoice") == "qwen3" ? Qwen3AsrModel : SenseVoiceModel,
         "ja" => SenseVoiceModel,
         "en" => WhisperEnModelId(size),
         _ => WhisperModelId(size),
     };
 
     /// <summary>Display name of the ASR model bundle routed for a language.</summary>
-    public static string AsrModelDisplayName(string language, string size) =>
-        Get(AsrModelId(language, size)).DisplayName;
+    public static string AsrModelDisplayName(string language, string size, string? zhBackend = null) =>
+        Get(AsrModelId(language, size, zhBackend)).DisplayName;
 
     /// <summary>
     /// Translation routing (P6-10): the target is always zh; the source follows the ASR
@@ -151,7 +152,7 @@ public static class ModelCatalog
 
     private static readonly ModelEntry Qwen3Asr = new(
         Qwen3AsrModel,
-        "Qwen3-ASR 1.7B（中文专精，慢但准）",
+        "Qwen3-ASR 1.7B（中文高精度，慢）",
         "prompt_template.json",
         new[]
         {
@@ -172,7 +173,7 @@ public static class ModelCatalog
 
     private static readonly ModelEntry SenseVoice = new(
         SenseVoiceModel,
-        "SenseVoiceSmall（日语专精，单程快速）",
+        "SenseVoiceSmall（中/日，单程快速，可 NPU）",
         "sensevoice_meta.json",
         new[]
         {

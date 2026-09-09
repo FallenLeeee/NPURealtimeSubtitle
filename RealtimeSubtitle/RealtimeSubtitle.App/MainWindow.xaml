@@ -104,6 +104,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <TextBlock Text="语音识别" Style="{StaticResource FieldLabel}" />
                     <ComboBox x:Name="AsrCombo" Grid.Column="1" HorizontalAlignment="Stretch"
@@ -115,19 +116,25 @@
                     <ComboBox x:Name="LanguageCombo" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
                               SelectionChanged="OnLanguageChanged">
                         <ComboBoxItem Content="自动（多语言 Whisper 检测）" Tag="auto" />
-                        <ComboBoxItem Content="中文（Qwen3-ASR 专精）" Tag="zh" />
+                        <ComboBoxItem Content="中文" Tag="zh" />
                         <ComboBoxItem Content="英语（Whisper .en 专精）" Tag="en" />
                         <ComboBoxItem Content="日语（SenseVoice 专精）" Tag="ja" />
                     </ComboBox>
-                    <TextBlock Text="识别模型" Grid.Row="2" Style="{StaticResource FieldLabel}" />
-                    <ComboBox x:Name="WhisperModelCombo" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch"
+                    <TextBlock x:Name="ZhBackendLabel" Text="中文引擎" Grid.Row="2" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="ZhBackendCombo" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch"
+                              SelectionChanged="OnZhBackendChanged">
+                        <ComboBoxItem Content="SenseVoice（快速 ~0.1-0.2s，可 NPU，推荐）" Tag="sensevoice" />
+                        <ComboBoxItem Content="Qwen3-ASR 1.7B（高精度，慢 ~0.5-2s，CPU）" Tag="qwen3" />
+                    </ComboBox>
+                    <TextBlock Text="识别模型" Grid.Row="3" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="WhisperModelCombo" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch"
                               SelectionChanged="OnWhisperModelChanged">
                         <ComboBoxItem Content="Whisper tiny（最快 ~0.08s/段）" Tag="tiny" />
                         <ComboBoxItem Content="Whisper base（推荐 ~0.13s/段）" Tag="base" />
                         <ComboBoxItem Content="Whisper small（最准 ~0.35s/段）" Tag="small" />
                     </ComboBox>
-                    <TextBlock Text="识别设备" Grid.Row="3" Style="{StaticResource FieldLabel}" />
-                    <ComboBox x:Name="AsrDeviceCombo" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch"
+                    <TextBlock Text="识别设备" Grid.Row="4" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="AsrDeviceCombo" Grid.Row="4" Grid.Column="1" HorizontalAlignment="Stretch"
                               SelectionChanged="OnAsrDeviceChanged">
                         <ComboBoxItem Content="自动（优先 NPU，编译失败回退 CPU）" Tag="auto" />
                         <ComboBoxItem Content="NPU（编码器静态形状，首次编译较慢）" Tag="NPU" />
@@ -139,7 +146,7 @@
         </Border>
 
         <!-- 翻译 -->
-        <Border Grid.Row="4" Style="{StaticResource Card}">
+        <Border x:Name="TransCard" Grid.Row="4" Style="{StaticResource Card}">
             <StackPanel Spacing="10">
                 <TextBlock Style="{StaticResource CardTitle}" Text="翻译" />
                 <Grid ColumnSpacing="14" RowSpacing="10">
@@ -151,14 +158,14 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <TextBlock Text="翻译设备" Style="{StaticResource FieldLabel}" />
+                    <TextBlock x:Name="TransDeviceLabel" Text="翻译设备" Style="{StaticResource FieldLabel}" />
                     <ComboBox x:Name="TransDeviceCombo" Grid.Column="1" HorizontalAlignment="Stretch"
                               SelectionChanged="OnTransDeviceChanged">
                         <ComboBoxItem Content="自动（CPU：不与 ASR 争 NPU，实测更快）" Tag="auto" />
                         <ComboBoxItem Content="NPU（静态形状，首次编译较慢）" Tag="NPU" />
                         <ComboBoxItem Content="CPU" Tag="CPU" />
                     </ComboBox>
-                    <TextBlock Text="翻译模型" Grid.Row="1" Style="{StaticResource FieldLabel}" />
+                    <TextBlock x:Name="TransModelLabel" Text="翻译模型" Grid.Row="1" Style="{StaticResource FieldLabel}" />
                     <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
                         <TextBox x:Name="TransModelBox" Height="32" VerticalContentAlignment="Center"
                                  PlaceholderText="模型目录（留空 = 自动查找/下载）" Width="340" />

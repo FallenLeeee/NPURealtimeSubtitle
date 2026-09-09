@@ -89,8 +89,8 @@ RealtimeSubtitle 便携版
 
 模型已放在 models\ 目录（应用会自动识别）：
   - whisper-en-small-int8   英语识别
-  - qwen3-asr-1.7b-int8     中文识别
-  - sensevoice-small-int8   日语识别
+  - sensevoice-small-int8   中文识别（默认，快速可 NPU）/ 日语识别
+  - qwen3-asr-1.7b-int8     中文高精度（可选：Asr.ZhBackend=qwen3 或 GUI「中文引擎」）
   - opus-mt-en-zh-int8      英→中翻译
   - opus-mt-ja-zh-int8      日→中翻译
 
@@ -99,7 +99,9 @@ RealtimeSubtitle 便携版
   2. 选识别语言（自动/中文/英语/日语）
   3. 点「开始」，播放带语音的内容
 
-配置与日志： %LOCALAPPDATA%\RealtimeSubtitle\
+说明：
+  - 中文识别默认 SenseVoice；中文模式下翻译自动关闭（原文即字幕）
+  - 配置与日志： %LOCALAPPDATA%\RealtimeSubtitle\
 "@
 Set-Content -Path (Join-Path $stage "README-便携说明.txt") -Value $readme -Encoding UTF8
 

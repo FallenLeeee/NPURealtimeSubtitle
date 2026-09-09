@@ -95,6 +95,7 @@ public sealed partial class MainWindow : Window
         SetupDisplayCombo();
         SetupAsrCombo();
         SetupLanguageCombo();
+        SetupZhBackendCombo();
         SetupWhisperModelCombo();
         SetupAsrDeviceCombo();
         SetupTransDeviceCombo();
@@ -102,6 +103,7 @@ public sealed partial class MainWindow : Window
         RefreshModelStatus();
         UpdateEngineHint();
         UpdateWhisperModelEnabled();
+        UpdateTranslationUi();
         SetStatus("就绪", NeutralBrush);
 
         _statsTimer = DispatcherQueue.CreateTimer();
@@ -188,6 +190,19 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void SetupZhBackendCombo()
+    {
+        string want = string.IsNullOrWhiteSpace(_config.Asr.ZhBackend) ? "sensevoice" : _config.Asr.ZhBackend;
+        foreach (var item in ZhBackendCombo.Items)
+        {
+            if (item is ComboBoxItem cbi && cbi.Tag as string == want)
+            {
+                ZhBackendCombo.SelectedItem = cbi;
+                break;
+            }
+        }
+    }
+
     private void SetupWhisperModelCombo()
     {
         foreach (var item in WhisperModelCombo.Items)
@@ -251,6 +266,7 @@ public sealed partial class MainWindow : Window
             SaveConfig();
             UpdateEngineHint();
             UpdateWhisperModelEnabled();
+            UpdateTranslationUi();
             RefreshModelStatus();
         }
     }
@@ -270,16 +286,31 @@ public sealed partial class MainWindow : Window
             "ja" => "ja-JP",
             _ => "auto",
         };
+        // P6-25: Chinese source already is the target language — force source-only subtitles
+        // and freeze the translation card so the user cannot enable a dead path.
+        if (tag == "zh")
+        {
+            _config.SubtitleMode = "source";
+            foreach (var item in DisplayCombo.Items)
+            {
+                if (item is ComboBoxItem displayItem && displayItem.Tag as string == "source")
+                {
+                    DisplayCombo.SelectedItem = displayItem;
+                    break;
+                }
+            }
+        }
         SaveConfig();
         UpdateEngineHint();
         UpdateWhisperModelEnabled();
+        UpdateTranslationUi();
         RefreshModelStatus();
 
         if (_services is not null && _config.Asr.PreferredBackend != "legacy")
         {
             try
             {
-                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId(tag, _config.Asr.Model));
+                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId(tag, _config.Asr.Model, _config.Asr.ZhBackend));
                 _services.SwitchAsrBackend(() => Services.AppServices.BuildRecognizer(_config, dir, _log));
                 SetStatus($"已热切换识别语言：{DescribeLanguage(tag)}", OkBrush);
                 _log.Info("ASR language hot-switched to {0}", tag);
@@ -310,7 +341,7 @@ public sealed partial class MainWindow : Window
         {
             try
             {
-                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId(language, tag));
+                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId(language, tag, _config.Asr.ZhBackend));
                 _services.SwitchAsrBackend(() => Services.AppServices.BuildRecognizer(_config, dir, _log));
                 SetStatus($"已热切换识别模型：Whisper {tag}", OkBrush);
                 _log.Info("ASR model hot-switched to {0}", tag);
@@ -329,9 +360,75 @@ public sealed partial class MainWindow : Window
         string language = _config.Asr.Language ?? "auto";
         // The size dropdown only applies to the whisper family (auto/en).
         WhisperModelCombo.IsEnabled = whisper && language is "auto" or "en";
+        // Chinese engine picker only applies when 识别语言 = 中文 (P6-24).
+        bool zh = language == "zh";
+        ZhBackendCombo.IsEnabled = whisper && zh;
+        ZhBackendLabel.Opacity = zh ? 1.0 : 0.45;
         // ASR device picker applies to every OpenVINO backend (whisper/SenseVoice/Qwen3);
         // legacy (Windows speech) has no device concept.
         AsrDeviceCombo.IsEnabled = whisper;
+    }
+
+    /// <summary>
+    /// P6-25: Chinese recognition produces the target language, so translation is forced off.
+    /// Freeze the translation card and lock 字幕显示 to 仅原文 while 识别语言 = 中文.
+    /// </summary>
+    private void UpdateTranslationUi()
+    {
+        bool zh = (_config.Asr.Language ?? "auto") == "zh";
+        bool running = _services is not null;
+
+        TransDeviceCombo.IsEnabled = !zh && !running && _config.Asr.PreferredBackend != "legacy";
+        TransModelBox.IsEnabled = !zh;
+        SaveModelButton.IsEnabled = !zh;
+        TransDeviceLabel.Opacity = zh ? 0.45 : 1.0;
+        TransModelLabel.Opacity = zh ? 0.45 : 1.0;
+        TransCard.Opacity = zh ? 0.55 : 1.0;
+
+        // Bilingual / translation-only require a real translator — lock them for Chinese.
+        if (zh)
+        {
+            DisplayCombo.IsEnabled = false;
+            TransHint.Text = "已关闭：识别语言为中文，原文即目标语，不走翻译（不加载 Marian）。「字幕显示」固定为仅原文。";
+        }
+        else
+        {
+            DisplayCombo.IsEnabled = !running;
+            TransHint.Text = string.IsNullOrWhiteSpace(_config.Translation.ModelPath)
+                ? "en/auto → en→zh，日语 → ja→zh。设备默认 CPU（不与 ASR 争 NPU）。"
+                : "使用自定义翻译模型目录。";
+        }
+    }
+
+    /// <summary>P6-24: Chinese backend (SenseVoice fast/NPU vs Qwen3 accurate/CPU). Persists
+    /// and hot-swaps when the pipeline is running.</summary>
+    private async void OnZhBackendChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ZhBackendCombo.SelectedItem is not ComboBoxItem cbi || cbi.Tag is not string tag) return;
+        if ((_config.Asr.ZhBackend ?? "sensevoice") == tag) return;
+
+        _config.Asr.ZhBackend = tag;
+        SaveConfig();
+        RefreshModelStatus();
+        UpdateEngineHint();
+
+        if (_services is not null
+            && _config.Asr.PreferredBackend != "legacy"
+            && (_config.Asr.Language ?? "auto") == "zh")
+        {
+            try
+            {
+                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId("zh", _config.Asr.Model, tag));
+                _services.SwitchAsrBackend(() => Services.AppServices.BuildRecognizer(_config, dir, _log));
+                SetStatus($"已热切换中文引擎：{DescribeLanguage("zh")}", OkBrush);
+                _log.Info("Zh backend hot-switched to {0}", tag);
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Zh backend switch failed: {0}", ex);
+                SetStatus($"中文引擎切换失败：{ex.Message}", BadBrush);
+            }
+        }
     }
 
     /// <summary>ASR inference device change (P6-18): persists, and while running hot-swaps
@@ -350,7 +447,7 @@ public sealed partial class MainWindow : Window
             try
             {
                 string language = _config.Asr.Language ?? "auto";
-                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId(language, _config.Asr.Model));
+                string dir = await EnsureModelAsync(ModelCatalog.AsrModelId(language, _config.Asr.Model, _config.Asr.ZhBackend));
                 _services.SwitchAsrBackend(() => Services.AppServices.BuildRecognizer(_config, dir, _log));
                 SetStatus($"已热切换识别设备：{tag}", OkBrush);
                 _log.Info("ASR device hot-switched to {0}", tag);
@@ -390,7 +487,9 @@ public sealed partial class MainWindow : Window
         {
             EngineHint.Text = language switch
             {
-                "zh" => $"中文 → Qwen3-ASR 1.7B（最准；约 0.5-2s/段，仅出终稿；识别设备 {asrDevice}，Qwen3 固定 CPU）。识别扬声器/系统音频（回环），无需麦克风权限。",
+                "zh" when (_config.Asr.ZhBackend ?? "sensevoice") == "qwen3"
+                    => $"中文 → Qwen3-ASR 1.7B（高精度；约 0.5-2s/段；说话中每 ~1.2s 刷新预览，解码过程流式出字；识别设备 {asrDevice}，解码固定 CPU）。识别扬声器/系统音频（回环），无需麦克风权限。",
+                "zh" => $"中文 → SenseVoiceSmall（快速；~0.1-0.2s/段，可 NPU；识别设备 {asrDevice}）。流式 partial + 段级 final。识别扬声器/系统音频（回环），无需麦克风权限。可在配置 Asr.ZhBackend=qwen3 切换高精度。",
                 "ja" => $"日语 → SenseVoiceSmall（单程快速，~0.1-0.2s/段，识别设备 {asrDevice}）→ opus-mt ja→zh 翻译。识别扬声器/系统音频（回环），无需麦克风权限。",
                 "en" => $"英语 → Whisper .en（tiny/base/small 生效；~0.1-0.4s/段，识别设备 {asrDevice}）。识别扬声器/系统音频（回环），无需麦克风权限。",
                 _ => $"自动 → 多语言 Whisper（自动检测语言；~0.1-0.4s/段，识别设备 {asrDevice}）。识别扬声器/系统音频（回环），无需麦克风权限；识别模型可热切换（tiny/base/small）。",
@@ -402,9 +501,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private static string DescribeLanguage(string language) => language switch
+    private string DescribeLanguage(string language) => language switch
     {
-        "zh" => "中文（Qwen3-ASR）",
+        "zh" => (_config.Asr.ZhBackend ?? "sensevoice") == "qwen3"
+            ? "中文（Qwen3-ASR）"
+            : "中文（SenseVoice）",
         "en" => "英语（Whisper .en）",
         "ja" => "日语（SenseVoice）",
         _ => "自动（多语言 Whisper）",
@@ -422,7 +523,7 @@ public sealed partial class MainWindow : Window
         string backend = _config.Asr.PreferredBackend;
         string language = _config.Asr.Language ?? "auto";
         bool whisperNeeded = backend != "legacy";
-        string asrModelId = ModelCatalog.AsrModelId(language, _config.Asr.Model);
+        string asrModelId = ModelCatalog.AsrModelId(language, _config.Asr.Model, _config.Asr.ZhBackend);
         string asrModelName = ModelCatalog.Get(asrModelId).DisplayName;
 
         if (whisperNeeded)
@@ -436,7 +537,13 @@ public sealed partial class MainWindow : Window
         }
 
         string? custom = _config.Translation.ModelPath;
-        if (!string.IsNullOrWhiteSpace(custom))
+        if (language == "zh")
+        {
+            // P6-25: Chinese source skips Marian entirely.
+            MarianDot.Fill = NeutralBrush;
+            MarianStatus.Text = "Marian 翻译模型：未启用（中文识别已关闭翻译）";
+        }
+        else if (!string.IsNullOrWhiteSpace(custom))
         {
             bool exists = Directory.Exists(custom);
             MarianDot.Fill = exists ? OkBrush : BadBrush;
@@ -451,7 +558,8 @@ public sealed partial class MainWindow : Window
         }
 
         bool missing = (whisperNeeded && _provisioner.FindLocal(asrModelId) is null)
-                    || (string.IsNullOrWhiteSpace(custom) && _provisioner.FindLocal(ModelCatalog.TranslationModelId(language)) is null);
+                    || (language != "zh" && string.IsNullOrWhiteSpace(custom)
+                        && _provisioner.FindLocal(ModelCatalog.TranslationModelId(language)) is null);
         DownloadButton.IsEnabled = missing;
         ModelsDetail.Text = missing
             ? $"缺失的模型点击“下载缺失模型”自动补齐（安装目录：{_provisioner.InstallRoot}）。" +
@@ -486,11 +594,16 @@ public sealed partial class MainWindow : Window
             // Download only what the current configuration actually needs (language-routed
             // translation + the language-routed ASR model); other bundles stay available
             // via WavDumpTool.
-            string transModelId = ModelCatalog.TranslationModelId(_config.Asr.Language ?? "auto");
-            var needed = new List<string> { transModelId };
+            string language = _config.Asr.Language ?? "auto";
+            string transModelId = ModelCatalog.TranslationModelId(language);
+            var needed = new List<string>();
+            if (language != "zh")
+            {
+                needed.Add(transModelId);
+            }
             if (_config.Asr.PreferredBackend != "legacy")
             {
-                needed.Add(ModelCatalog.AsrModelId(_config.Asr.Language ?? "auto", _config.Asr.Model));
+                needed.Add(ModelCatalog.AsrModelId(language, _config.Asr.Model, _config.Asr.ZhBackend));
             }
 
             foreach (string modelId in needed)
@@ -548,9 +661,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    /// <summary>User-configured translation model dir (when valid), else the provisioned default.</summary>
+    /// <summary>User-configured translation model dir (when valid), else the provisioned default.
+    /// Chinese source returns empty — translation is forced off (P6-25).</summary>
     private async Task<string> ResolveTranslationModelAsync()
     {
+        if ((_config.Asr.Language ?? "auto") == "zh")
+        {
+            _log.Info("Chinese source: skipping translation model resolve (translation forced off).");
+            return "";
+        }
+
         string? custom = _config.Translation.ModelPath;
         if (!string.IsNullOrWhiteSpace(custom))
         {
@@ -591,7 +711,7 @@ public sealed partial class MainWindow : Window
 
             string marianDir = await ResolveTranslationModelAsync();
             string? asrDir = null;
-            if (whisperNeeded) asrDir = await EnsureModelAsync(ModelCatalog.AsrModelId(_config.Asr.Language ?? "auto", _config.Asr.Model));
+            if (whisperNeeded) asrDir = await EnsureModelAsync(ModelCatalog.AsrModelId(_config.Asr.Language ?? "auto", _config.Asr.Model, _config.Asr.ZhBackend));
 
             if (!File.Exists(_transcriptPath))
             {
@@ -608,7 +728,9 @@ public sealed partial class MainWindow : Window
             _services.Start();
 
             SetStatus(live
-                ? $"运行中：{DescribeAsr(backend)}（{DescribeLanguage(_config.Asr.Language ?? "auto")}） → 翻译（{_services.TranslationQueue.TranslatorDevice}）→ 字幕"
+                ? (_config.Asr.Language ?? "auto") == "zh"
+                    ? $"运行中：{DescribeAsr(backend)}（{DescribeLanguage("zh")}）→ 字幕（仅原文，翻译已关闭）"
+                    : $"运行中：{DescribeAsr(backend)}（{DescribeLanguage(_config.Asr.Language ?? "auto")}） → 翻译（{_services.TranslationQueue.TranslatorDevice}）→ 字幕"
                 : "运行中：演示字幕（demo.txt → 翻译 → 字幕）", OkBrush);
             StartButton.Content = "停止";
             ModeCombo.IsEnabled = false;
@@ -617,8 +739,13 @@ public sealed partial class MainWindow : Window
             LanguageCombo.IsEnabled = false;
             TransDeviceCombo.IsEnabled = false;
             WhisperModelCombo.IsEnabled = false;
+            ZhBackendCombo.IsEnabled = false;
             AsrDeviceCombo.IsEnabled = false;
-            ActionHint.Text = "运行中 · 覆盖层位于屏幕下方居中";
+            TransModelBox.IsEnabled = false;
+            SaveModelButton.IsEnabled = false;
+            ActionHint.Text = (_config.Asr.Language ?? "auto") == "zh"
+                ? "运行中 · 中文字幕（仅原文，翻译已关闭）· 覆盖层位于屏幕下方居中"
+                : "运行中 · 覆盖层位于屏幕下方居中";
             _log.Info("Pipeline started ({0}); asr={1}", live ? "live" : "demo", backend);
         }
         catch (Exception ex)
@@ -648,7 +775,10 @@ public sealed partial class MainWindow : Window
         LanguageCombo.IsEnabled = true;
         TransDeviceCombo.IsEnabled = true;
         WhisperModelCombo.IsEnabled = true;
-        UpdateWhisperModelEnabled(); // also re-enables AsrDeviceCombo per backend
+        TransModelBox.IsEnabled = true;
+        SaveModelButton.IsEnabled = true;
+        UpdateWhisperModelEnabled(); // also re-enables AsrDeviceCombo / ZhBackendCombo per language
+        UpdateTranslationUi();
         ActionHint.Text = "";
         SetStatus("已停止", NeutralBrush);
     }

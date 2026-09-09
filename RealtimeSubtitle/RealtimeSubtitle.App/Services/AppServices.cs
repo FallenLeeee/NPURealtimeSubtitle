@@ -31,13 +31,41 @@ public sealed class AppServices : IDisposable
     private string? _lastPartialQueued;
     private DateTimeOffset _lastPartialQueuedAt = DateTimeOffset.MinValue;
 
+    // Chinese source → Chinese target: skip the en→zh translator (it would garble already-Chinese
+    // text and waste queue slots). The ASR source IS the Chinese subtitle line.
+    private readonly bool _skipTranslation;
+
     public AppServices(AppConfig config, string translationModelPath, ISpeechRecognizer recognizer, LogSink log)
     {
         _recognizer = recognizer;
         _config = config;
+        _skipTranslation = IsChineseSource(config.Asr.Language) && IsChineseTarget(config.TargetLanguage);
 
-        config.Subtitle.Mode = config.SubtitleMode; // root schema drives the subtitle style
+        // Chinese source is already the target language — force source-only subtitles so
+        // bilingual/translation modes cannot show an empty or garbled second line.
+        if (_skipTranslation)
+        {
+            config.SubtitleMode = "source";
+            config.Subtitle.Mode = "source";
+        }
+        else
+        {
+            config.Subtitle.Mode = config.SubtitleMode; // root schema drives the subtitle style
+        }
+
         Subtitles = new SubtitleManager(config.Subtitle);
+        Log = log;
+
+        if (_skipTranslation)
+        {
+            // P6-25: do not load Marian at all — Chinese→Chinese is identity. The queue
+            // stays so the pipeline shape is unchanged, but no OpenVINO translator is compiled.
+            Log.Info("Chinese source → translation forced off (identity; Marian not loaded).");
+            _queue = new TranslationQueue(new NullTranslator(), capacity: 2);
+            TranslationQueue = _queue;
+            BindRecognizer(recognizer);
+            return;
+        }
 
         // GUI's 翻译设备 dropdown (auto/NPU/CPU) previously never reached the runtime:
         // this line hard-coded "auto" and disregarded config.Translation.Device, so users
@@ -51,7 +79,6 @@ public sealed class AppServices : IDisposable
             ? "auto"
             : config.Translation.Device;
         if (transDevice == "auto") transDevice = "CPU";
-        Log = log;
         Log.Info("Translation device from config: {0}{1}",
             config.Translation.Device ?? "(empty)",
             transDevice == "CPU" && !string.IsNullOrWhiteSpace(config.Translation.Device)
@@ -114,7 +141,7 @@ public sealed class AppServices : IDisposable
             // partials (throttled + deduplicated) so lyrics scroll WITH their translation
             // even though SentenceVoice finals are rare in continuous singing.
             int lineId = Subtitles.OnSourcePartial(clean, p.Timestamp);
-            if (ShouldTranslatePartial(clean))
+            if (!_skipTranslation && ShouldTranslatePartial(clean))
             {
                 _queue.TryEnqueue(new TranslationRequest(clean, p.Timestamp, SubtitleLineId: lineId));
             }
@@ -129,9 +156,24 @@ public sealed class AppServices : IDisposable
             // P6-13: capture the stable line id so the late translation lands on THIS line
             // (matching by text failed when the next sentence's partial arrived first).
             int lineId = Subtitles.OnSourceFinal(clean, f.Timestamp);
+            if (_skipTranslation)
+            {
+                // Identity: keep TranslatedText empty so bilingual mode does not duplicate
+                // the same Chinese on line 2. The ASR source is already the Chinese subtitle.
+                return;
+            }
             _queue.TryEnqueue(new TranslationRequest(clean, f.Timestamp, SubtitleLineId: lineId));
         };
     }
+
+    private static bool IsChineseSource(string? language) =>
+        string.Equals(language, "zh", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(language, "zh-CN", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(language, "zh_CN", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsChineseTarget(string? language) =>
+        string.IsNullOrWhiteSpace(language)
+        || language.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// P6-14: throttle partial translation to changed text at most ~1/s. A partial grows
@@ -170,12 +212,12 @@ public sealed class AppServices : IDisposable
 
     /// <summary>
     /// Live mode: real input → ASR → translation → subtitles. The ASR backend comes from
-    /// config <c>Asr.PreferredBackend</c> (+ language routing, P6-4):
+    /// config <c>Asr.PreferredBackend</c> (+ language routing, P6-4 / P6-24):
     ///   "legacy"      → Windows.Media.SpeechRecognition (mic, streaming; no loopback feeder),
     ///   "whisper"/…   → language-routed OpenVINO backend on the loopback capture:
     ///                     Asr.Language auto → multilingual whisper
     ///                     "en"              → whisper.en (mono)
-    ///                     "zh"              → Qwen3-ASR
+    ///                     "zh"              → SenseVoice (fast/NPU) or Qwen3-ASR (accurate)
     ///                     "ja"              → SenseVoiceSmall
     /// </summary>
     public static AppServices CreateLive(string translationModelPath, string? asrModelDir, LogSink log)
@@ -229,7 +271,11 @@ public sealed class AppServices : IDisposable
         log.Info("ASR routing: language={0} model={1} device={2}", language, asrModelDir, device);
         return language switch
         {
-            "zh" => new OpenVinoQwen3AsrRecognizer(asrModelDir, "zh", log, device: device),
+            // P6-24: Chinese defaults to SenseVoice (~0.1-0.2s, NPU-capable, streaming).
+            // Qwen3-ASR stays available via Asr.ZhBackend=qwen3 for max accuracy.
+            "zh" when (config.Asr.ZhBackend ?? "sensevoice") == "qwen3"
+                => new OpenVinoQwen3AsrRecognizer(asrModelDir, "zh", log, device: device),
+            "zh" => new OpenVinoSenseVoiceRecognizer(asrModelDir, log, vad: config.Vad, device: device),
             "ja" => new OpenVinoSenseVoiceRecognizer(asrModelDir, log, vad: config.Vad, device: device),
             // "en" → whisper.en (mono flag in the model) ; "auto"/others → multilingual whisper.
             _ => new OpenVinoWhisperClassicRecognizer(asrModelDir, device: device,

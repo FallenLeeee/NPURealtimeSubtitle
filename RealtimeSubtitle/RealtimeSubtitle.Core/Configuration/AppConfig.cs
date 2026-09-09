@@ -34,6 +34,8 @@ public sealed class AppConfig
             issues.Add("Asr.PreferredBackend must be one of: windows-ai | legacy | whisper.");
         if (Asr is not null && Asr.Device is not ("auto" or "NPU" or "CPU"))
             issues.Add("Asr.Device must be one of: auto | NPU | CPU.");
+        if (Asr is not null && Asr.ZhBackend is not (null or "" or "sensevoice" or "qwen3"))
+            issues.Add("Asr.ZhBackend must be one of: sensevoice | qwen3.");
 
         if (Translation is null) issues.Add("Translation section is missing.");
         else
@@ -85,8 +87,10 @@ public sealed class AsrConfig
     // auto → 各后端默认（whisper classic/SenseVoice 尝试 NPU；Qwen3 固定 CPU）。
     public string Device { get; set; } = "auto";
     // ASR 路由的源语言（P6-4）：auto | zh | en | ja。
-    // auto → 多语言 whisper；zh → Qwen3-ASR；ja → SenseVoice；en → whisper.en。
+    // auto → 多语言 whisper；zh → ZhBackend（默认 SenseVoice）；ja → SenseVoice；en → whisper.en。
     public string Language { get; set; } = "auto";
+    // 中文识别后端（P6-24）：sensevoice = 快/NPU/流式（默认）；qwen3 = 1.7B 高精度但慢。
+    public string ZhBackend { get; set; } = "sensevoice";
     public bool UsePartialPreview { get; set; } = true;
 }
 

@@ -93,4 +93,28 @@ public class AppConfigLoaderTests
         Assert.Empty(issues);
         Assert.Equal("auto", config.Asr.Device);
     }
+
+    [Fact]
+    public void ZhBackend_DefaultsToSenseVoice()
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "nope.json");
+
+        var (config, issues) = AppConfigLoader.Load(path);
+
+        Assert.Empty(issues);
+        Assert.Equal("sensevoice", config.Asr.ZhBackend);
+    }
+
+    [Fact]
+    public void ZhBackend_Invalid_IsReported()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(dir, "config.json");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(path, """{ "asr": { "zhBackend": "whisper" } }""");
+
+        var (_, issues) = AppConfigLoader.Load(path);
+
+        Assert.Contains(issues, i => i.Contains("Asr.ZhBackend", StringComparison.Ordinal));
+    }
 }

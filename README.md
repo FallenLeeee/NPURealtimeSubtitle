@@ -8,7 +8,7 @@ Windows 11 **本地实时双语字幕**工具：采集系统声音 → 本地语
 ## 功能
 
 - WASAPI 回环捕获系统音频（游戏/视频/音乐），无需麦克风权限（默认引擎）
-- 本地 ASR：Whisper（自动/英语）、SenseVoice（日语）、Qwen3-ASR（中文）
+- 本地 ASR：Whisper（自动/英语）、SenseVoice（中/日，可 NPU）、Qwen3-ASR（中文高精度可选）
 - 本地翻译：MarianMT（en→zh / ja→zh）
 - 可选：Windows 语音识别（麦克风）
 - 透明置顶字幕覆盖层（不抢焦点、可穿透鼠标）
@@ -59,7 +59,8 @@ dotnet build RealtimeSubtitle.App -c Debug -p:WindowsPackageType=None -p:Platfor
 | 用途 | 模型 ID |
 |---|---|
 | 英语识别 | `whisper-en-small-int8` 等 |
-| 中文识别 | `qwen3-asr-1.7b-int8` |
+| 中文识别（默认，快/NPU） | `sensevoice-small-int8` |
+| 中文识别（高精度，可选） | `qwen3-asr-1.7b-int8` |
 | 日语识别 | `sensevoice-small-int8` |
 | 英→中翻译 | `opus-mt-en-zh-int8` |
 | 日→中翻译 | `opus-mt-ja-zh-int8` |

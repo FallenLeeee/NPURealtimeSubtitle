@@ -34,6 +34,8 @@ RealtimeSubtitle/tools/msbuild-sdks/
 # --- Temp ---
 .tmp/
 **/.tmp/
+tmp/
+RealtimeSubtitle/tmp/
 *.tmp
 *.log
 Thumbs.db

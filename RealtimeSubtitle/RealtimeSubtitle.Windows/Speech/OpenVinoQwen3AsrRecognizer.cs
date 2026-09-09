@@ -8,26 +8,37 @@ using RealtimeSubtitle.Core.Speech;
 namespace RealtimeSubtitle.Windows;
 
 /// <summary>
-/// Qwen3-ASR backend via the classic OpenVINO API (decision P6-5). Pipeline per segment:
+/// Qwen3-ASR backend via the classic OpenVINO API (decision P6-5 / P6-24). Pipeline per segment:
 ///   whisper-style 128-mel [128, T] (padded to a multiple of 100 frames) →
 ///   AuT audio encoder (CPU; dynamic shape) → (1, n_audio, 2048) →
 ///   prompt ids (prefix + audio_pad×n_audio + suffix + language suffix) →
 ///   thinker embeddings → splice audio embeddings at the pad positions →
 ///   prefill KV (input_embeds + position_ids) → per-token decode (new_embed + new_pos + past)
 ///   → Qwen byte-level BPE decode.
-/// The 1.7B LLM decode dominates latency (~2 s/segment on CPU), so this backend is
-/// final-only (no streaming partials) — see the GUI hint for 中文.
+/// The 1.7B LLM decode dominates latency (~0.5–2 s/segment on CPU) and cannot NPU-compile
+/// (dynamic KV shapes, hundreds of dynamic nodes after reshape — P6-5). A static-NPU encoder
+/// ([128,3000]) is compileable but forces ~390 audio tokens on every short clip, which
+/// inflates prefill more than the encoder gains — net loss for realtime subtitles.
+/// Chinese default backend is SenseVoice (fast + NPU); this path stays for max accuracy via
+/// Asr.ZhBackend=qwen3, tightened with an 8 s ring, 96-token decode cap, and CPU LATENCY hint.
+/// Streaming: in-progress VAD partial every ~1.2 s + mid-decode Partial every few tokens.
 /// </summary>
 public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
 {
     private const int SampleRate = 16000;
     private const int PrepadSamples = 3200;
-    private const int MaxRingSamples = 240_000; // 15 s cap
+    // 8 s cap (was 15 s): shorter segments decode far faster and match Whisper's ring budget.
+    private const int MaxRingSamples = 128_000;
     private const int MinSegmentSamples = 1600;
     private const int MaxMelFrames = 3000;
     private const int FrameChunk = 100;         // encoder reshape requires T % 100 == 0
     private const int VocabSize = 151936;
-    private const int MaxDecodeTokens = 256;
+    // Subtitles rarely need more than ~40 Chinese tokens; 96 is a safe realtime budget
+    // (was 256 — a runaway decode could burn seconds for no UX gain).
+    private const int MaxDecodeTokens = 96;
+    private const int PartialMinSegmentSamples = SampleRate * 8 / 10; // 0.8 s
+    private const int PartialIntervalMs = 1200;
+    private const int PartialDecodeEveryTokens = 6; // mid-decode Partial cadence
 
     private readonly OpenVinoSharp.Core _core;
     private readonly CompiledModel _audioEncoder;
@@ -48,6 +59,7 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
     private int _segmentStart = -1;
     private bool _started;
     private readonly SemaphoreSlim _transcribeGate = new(1, 1);
+    private DateTimeOffset _lastPartial = DateTimeOffset.MinValue;
     private readonly object _inFlightSync = new();
     private readonly List<Task> _inFlight = new();
 
@@ -57,13 +69,14 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
         _log = log ?? LogSink.Default;
         _core = new OpenVinoSharp.Core();
         OpenVinoDevice.ApplyCache(_core, "CPU", "NPU");
+        ApplyCpuLatencyHint(_core);
 
-        // P6-18: Qwen3-ASR is a dynamic-shape 1.7B LLM pipeline (encoder + thinker + 2 KV
-        // decode steps). The NPU can't compile it (dynamic shapes), so device selection is
-        // honored only as surface state: execution stays on CPU regardless of the GUI pick.
+        // P6-18/P6-24: the 1.7B thinker/prefill/decode only compile on CPU. The AuT encoder
+        // stays CPU+dynamic so short clips keep a short audio-token prompt (a static-NPU
+        // [128,3000] pad makes prefill slower for typical 1–4 s subtitle segments).
         if (device is not ("auto" or "CPU"))
         {
-            _log.Warn("Qwen3-ASR: device='{0}' requested, but the dynamic 1.7B pipeline only compiles on CPU — using CPU.", device);
+            _log.Warn("Qwen3-ASR: device='{0}' requested, but the dynamic 1.7B pipeline only compiles on CPU — using CPU. Chinese realtime/NPU path is SenseVoice (Asr.ZhBackend=sensevoice).", device);
         }
 
         _audioEncoder = _core.CompileModel(Path.Combine(modelDir, "audio_encoder_model.xml"), "CPU");
@@ -131,10 +144,24 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
                 _ring.RemoveRange(0, _ring.Count - MaxRingSamples);
             }
 
-            // Final-only backend (P6-5): the 1.7B decode cannot keep a 1.2 s partial cadence.
+            // Force-finalize over-long continuous speech so subtitles keep flowing.
             if (_segmentStart >= 0 && _ring.Count - _segmentStart >= MaxRingSamples)
             {
                 FinalizeSegment(timestamp);
+            }
+
+            // Streaming Partial: re-transcribe the in-progress segment every ~1.2 s so
+            // Chinese text appears while the speaker is still talking (previously final-only).
+            if (_segmentStart >= 0)
+            {
+                int segLen = _ring.Count - _segmentStart;
+                if (segLen >= PartialMinSegmentSamples
+                    && DateTimeOffset.UtcNow - _lastPartial >= TimeSpan.FromMilliseconds(PartialIntervalMs))
+                {
+                    _lastPartial = DateTimeOffset.UtcNow;
+                    float[] seg = _ring.GetRange(_segmentStart, segLen).ToArray();
+                    _ = StartTranscribe(seg, timestamp, partial: true);
+                }
             }
         }
     }
@@ -143,18 +170,21 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
     {
         int end = _ring.Count;
         int count = end - _segmentStart;
+        // Continuous speech hits the 15 s ring cap with count == MaxRingSamples + a chunk.
+        // `count > MaxRingSamples → return` dropped that entire segment (no Chinese output).
+        if (count > MaxRingSamples) count = MaxRingSamples;
         _segmentStart = -1;
-        if (count < MinSegmentSamples || count > MaxRingSamples) return;
+        if (count < MinSegmentSamples) return;
 
         float[] segment = _ring.GetRange(end - count, count).ToArray();
         if (_ring.Count > PrepadSamples) _ring.RemoveRange(0, _ring.Count - PrepadSamples);
 
-        _ = StartTranscribe(segment, timestamp);
+        _ = StartTranscribe(segment, timestamp, partial: false);
     }
 
-    private Task StartTranscribe(float[] segment, DateTimeOffset timestamp)
+    private Task StartTranscribe(float[] segment, DateTimeOffset timestamp, bool partial)
     {
-        var task = Task.Run(() => Transcribe(segment, timestamp));
+        var task = Task.Run(() => Transcribe(segment, timestamp, partial));
         lock (_inFlightSync)
         {
             _inFlight.Add(task);
@@ -164,9 +194,18 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
         return task;
     }
 
-    private void Transcribe(float[] segment, DateTimeOffset timestamp)
+    private void Transcribe(float[] segment, DateTimeOffset timestamp, bool partial)
     {
-        _transcribeGate.Wait();
+        // Partials are disposable previews — skip when a Final/partial already holds the slot.
+        if (partial)
+        {
+            if (!_transcribeGate.Wait(0)) return;
+        }
+        else
+        {
+            _transcribeGate.Wait();
+        }
+
         try
         {
             var total = Stopwatch.StartNew();
@@ -232,6 +271,7 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
             long next = ArgMax(logits, 0, VocabSize);
             using var thStep = _thinker.CreateInferRequest();
             using var decReq = _decode.CreateInferRequest();
+            string lastPreview = string.Empty;
             for (int step = 0; step < MaxDecodeTokens; step++)
             {
                 if (next == _eosId) break;
@@ -251,16 +291,29 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
                 pastKeys = decReq.GetOutputTensor(1).GetFloatData();
                 pastValues = decReq.GetOutputTensor(2).GetFloatData();
                 next = ArgMax(logits, 0, VocabSize);
+
+                // Mid-decode stream: Finals take ~0.5–2 s — push Partial every few tokens so
+                // the overlay grows instead of dumping the whole sentence at once.
+                if (!partial && generated.Count % PartialDecodeEveryTokens == 0)
+                {
+                    string preview = _token.Decode(generated);
+                    if (preview.Length > 0 && !string.Equals(preview, lastPreview, StringComparison.Ordinal))
+                    {
+                        lastPreview = preview;
+                        Partial?.Invoke(new AsrPartial(preview, timestamp));
+                    }
+                }
             }
 
             long decMs = total.ElapsedMilliseconds - t0;
 
             string text = _token.Decode(generated);
-            _log.Info("Qwen3-ASR in {0:N0} ms (mel {1}, enc {2}, emb {3}, prefill {4}, dec {5}): \"{6}\"",
-                total.ElapsedMilliseconds, melMs, encMs, embMs, prefillMs, decMs, text);
+            _log.Info("Qwen3-ASR{0} in {1:N0} ms (mel {2}, enc {3}, emb {4}, prefill {5}, dec {6}): \"{7}\"",
+                partial ? " (partial)" : "", total.ElapsedMilliseconds, melMs, encMs, embMs, prefillMs, decMs, text);
             if (text.Length > 0)
             {
-                Final?.Invoke(new AsrFinal(text, timestamp));
+                if (partial) Partial?.Invoke(new AsrPartial(text, timestamp));
+                else Final?.Invoke(new AsrFinal(text, timestamp));
             }
         }
         catch (Exception ex)
@@ -338,6 +391,19 @@ public sealed class OpenVinoQwen3AsrRecognizer : ISpeechRecognizer
         "ja" => "Japanese",
         _ => "Chinese",
     };
+
+    /// <summary>Realtime ASR wants the lowest per-call latency, not max throughput.</summary>
+    private static void ApplyCpuLatencyHint(OpenVinoSharp.Core core)
+    {
+        try
+        {
+            core.SetProperty("CPU", "PERFORMANCE_HINT", "LATENCY");
+        }
+        catch
+        {
+            // Older OpenVINO builds use PERF_COUNT/NUM_THREADS defaults — ignore.
+        }
+    }
 
     private static int[] ReadInts(JsonElement arr)
     {

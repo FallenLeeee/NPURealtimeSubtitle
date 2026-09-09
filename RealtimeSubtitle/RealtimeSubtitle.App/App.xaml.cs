@@ -151,7 +151,7 @@ public partial class App : Application
         string transModelId = ModelCatalog.TranslationModelId(cfg.Asr.Language ?? "auto");
         string transFallbackDir = Path.Combine("tools", "model-convert", "out", transModelId);
         modelDir ??= ResolveModelDir(transModelId, transFallbackDir);
-        string asrModelId = ModelCatalog.AsrModelId(cfg.Asr.Language ?? "auto", cfg.Asr.Model);
+        string asrModelId = ModelCatalog.AsrModelId(cfg.Asr.Language ?? "auto", cfg.Asr.Model, cfg.Asr.ZhBackend);
         string fallbackDir = Path.Combine("tools", "model-convert", "out", "whisper-base-int8");
         whisperDir ??= ResolveModelDir(asrModelId, fallbackDir);
         int exitCode = 1;
