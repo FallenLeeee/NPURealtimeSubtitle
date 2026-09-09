@@ -40,7 +40,7 @@ public sealed class SubtitleManager
         else if (Current.State == SubtitleItemState.Recognizing)
         {
             Current.SourceText = text;
-            Current.EndTime = now + TimeSpan.FromMilliseconds(_config.DurationMs);
+            Current.EndTime = DateTimeOffset.MaxValue; // sticky: stay until next sentence
         }
         else
         {
@@ -63,7 +63,7 @@ public sealed class SubtitleManager
             Id = _nextId++,
             SourceText = text,
             StartTime = now,
-            EndTime = now + TimeSpan.FromMilliseconds(_config.DurationMs),
+            EndTime = DateTimeOffset.MaxValue, // sticky: stay until next sentence
             State = SubtitleItemState.Translating,
         };
         PushLine(line);
@@ -93,7 +93,7 @@ public sealed class SubtitleManager
                 Current.State = SubtitleItemState.Completed;
             }
 
-            Current.EndTime = now + TimeSpan.FromMilliseconds(_config.DurationMs);
+            Current.EndTime = DateTimeOffset.MaxValue; // sticky: stay until next sentence
             Publish();
         }
         else
@@ -128,7 +128,7 @@ public sealed class SubtitleManager
             Id = _nextId++,
             SourceText = text,
             StartTime = now,
-            EndTime = now + TimeSpan.FromMilliseconds(_config.DurationMs),
+            EndTime = DateTimeOffset.MaxValue, // sticky: stay until next sentence
             State = state,
         };
     }

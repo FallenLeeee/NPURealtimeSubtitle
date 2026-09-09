@@ -34,7 +34,12 @@ public static class ModelPaths
     public static string? FindModelDir(ModelEntry entry, string? installRoot = null)
     {
         string root = string.IsNullOrWhiteSpace(installRoot) ? DefaultInstallRoot() : installRoot;
-        var candidates = new List<string> { Path.Combine(root, entry.Id) };
+        var candidates = new List<string>
+        {
+            Path.Combine(root, entry.Id),
+            // Portable layout: models\<id> sitting next to the executable.
+            Path.Combine(AppContext.BaseDirectory, "models", entry.Id),
+        };
         foreach (string repo in RepoSearchRoots())
         {
             candidates.Add(Path.Combine(repo, "out", entry.Id));

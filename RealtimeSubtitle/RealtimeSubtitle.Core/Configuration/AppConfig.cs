@@ -114,6 +114,8 @@ public sealed class SubtitleConfig
     public string Mode { get; set; } = "bilingual"; // source | translation | bilingual（镜像根 SubtitleMode）
     public int FontSize { get; set; } = 32;
     public int MaxLines { get; set; } = 2;
+    /// <summary>Legacy dwell window (ms). Sticky subtitles ignore this — a line stays until
+    /// the next real sentence replaces it.</summary>
     public int DurationMs { get; set; } = 6000;
     public double Opacity { get; set; } = 0.9;      // 整窗口 alpha
     public SubtitlePositionConfig Position { get; set; } = new();

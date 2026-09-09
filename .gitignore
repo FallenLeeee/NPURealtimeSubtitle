@@ -1,38 +1,66 @@
-# --- NuGet 包缓存（顶层 + 项目内） ---
+# --- NuGet ---
 .nuget-packages/
+packages/
 
-# --- 构建产物 ---
+# --- .NET build ---
 **/bin/
 **/obj/
-RealtimeSubtitle/.vs/
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.DotSettings.user
 
-# --- 临时签名证书（VS 生成，非发行密钥） ---
+# --- Certificates / secrets ---
 *.pfx
+*.p12
+*.key
+*.pem
+appsettings.*.local.json
+secrets.json
 
-# --- MSIX 打包输出 ---
+# --- MSIX / publish ---
 **/AppPackages/
+**/BundleArtifacts/
+dist/
+publish/
+*.msix
+*.appx
 
-# --- .NET SDK 本地副本（工具目录） ---
+# --- Local SDK / tools copies ---
 RealtimeSubtitle/tools/msbuild-sdks/
 
-# --- 临时文件 ---
+# --- Temp ---
 .tmp/
 **/.tmp/
+*.tmp
+*.log
+Thumbs.db
+Desktop.ini
+.DS_Store
 
-# --- Python 虚拟环境与 HuggingFace 下载缓存 ---
+# --- Python / model convert ---
 RealtimeSubtitle/tools/model-convert/.venv/
 RealtimeSubtitle/tools/model-convert/.hf-cache/
-
-# --- 模型导出产物（体积大，可由 convert_models.py 重新生成） ---
 RealtimeSubtitle/tools/model-convert/out/
 RealtimeSubtitle/tools/model-convert/dist/
 RealtimeSubtitle/tools/model-convert/testrefs/
+__pycache__/
+*.py[cod]
 
-# --- 运行/探针输出 ---
+# --- Model weights anywhere (never commit large binaries) ---
+*.bin
+*.onnx
+*.blob
+*.nncase
+
+# --- Runtime / probe output ---
 probe2.txt
 *.report.txt
 demo-report.txt
 live-report.txt
 overlay-probe.txt
+out.wav
+*.wav
+!RealtimeSubtitle/testdata/*.wav

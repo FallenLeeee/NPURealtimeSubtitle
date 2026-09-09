@@ -105,16 +105,8 @@ public sealed class AppServices : IDisposable
             string clean = CleanAsrText(p.Text);
             if (clean.Length == 0)
             {
-                // P6-23: only clear on a REAL event annotation ("[Music]", "<|music|>", …) —
-                // an empty partial (VAD silence between words) must NOT wipe the last subtitle.
-                if (!string.IsNullOrWhiteSpace(p.Text) && AsrJunkFilter.IsJunk(p.Text))
-                {
-                    // P6-22: interlude / [Music] burst — no lyrics. Clear the overlay instead of
-                    // freezing it on the previous line (the capture keeps feeding junk, so
-                    // without this the subtitle stays stuck and reads as "字幕没输出了").
-                    Subtitles.Clear();
-                }
-
+                // Sticky subtitles: junk / silence must NOT wipe the last lyric — the line
+                // stays until the next real sentence replaces it.
                 return;
             }
 
@@ -132,12 +124,6 @@ public sealed class AppServices : IDisposable
             string clean = CleanAsrText(f.Text);
             if (clean.Length == 0)
             {
-                // Same rule as Partial (P6-23): clear only on a real pure-event final.
-                if (!string.IsNullOrWhiteSpace(f.Text) && AsrJunkFilter.IsJunk(f.Text))
-                {
-                    Subtitles.Clear();
-                }
-
                 return;
             }
             // P6-13: capture the stable line id so the late translation lands on THIS line
