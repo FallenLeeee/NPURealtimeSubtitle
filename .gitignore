@@ -12,6 +12,9 @@ packages/
 .vs/
 *.DotSettings.user
 
+# --- Local dev docs (not distributed) ---
+AGENTS.md
+
 # --- Certificates / secrets ---
 *.pfx
 *.p12

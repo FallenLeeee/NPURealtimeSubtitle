@@ -41,8 +41,6 @@ dotnet build RealtimeSubtitle.App -c Debug -p:WindowsPackageType=None -p:Platfor
 .\RealtimeSubtitle.App\bin\x64\Debug\net8.0-windows10.0.26100.0\RealtimeSubtitle.App.exe
 ```
 
-开发者细节见 [AGENTS.md](AGENTS.md)。
-
 ## 模型
 
 应用会按顺序查找模型（安装目录 → exe 旁 `models/` → 仓库 out/ → 离线 zip → 可选 BaseUrl）。  
